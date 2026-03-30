@@ -2287,6 +2287,24 @@ if (mode === "http") {
     res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
     if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
 
+    // Smithery server card for discovery
+    if (req.method === "GET" && req.url === "/.well-known/mcp/server-card.json") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        name: "veroq",
+        description: "VEROQ — the trust protocol for agentic AI. 52 tools for verified financial intelligence: ask, verify, search, price, technicals, screener, and more. 1,061+ tickers.",
+        version: "1.1.0",
+        homepage: "https://veroq.ai",
+        repository: "https://github.com/Veroq-api/veroq-mcp",
+        tools: 52,
+        capabilities: ["ask", "verify", "search", "price", "technicals", "earnings", "sentiment", "screener", "backtest", "full", "trending", "entities", "crypto", "forex", "commodities", "economy"],
+        config: {
+          VEROQ_API_KEY: { type: "string", required: true, description: "Your VEROQ API key. Get a free key at veroq.ai/pricing" }
+        }
+      }));
+      return;
+    }
+
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
     // Existing session — route to its transport
