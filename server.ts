@@ -2,7 +2,9 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
+import { createServer } from "http";
 
 // --- Config ---
 
@@ -17,7 +19,7 @@ if (!VEROQ_API_KEY) {
 
 const BASE_URL =
   (process.env.VEROQ_BASE_URL || process.env.POLARIS_BASE_URL)?.replace(/\/+$/, "") ||
-  "https://api.thepolarisreport.com";
+  "https://api.veroq.ai";
 
 // --- API helper ---
 
@@ -2266,5 +2268,26 @@ server.tool(
 
 // --- Start ---
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
+const mode = process.env.MCP_TRANSPORT || (process.argv.includes("--http") ? "http" : "stdio");
+
+if (mode === "http") {
+  const PORT = parseInt(process.env.PORT || "3100", 10);
+  const httpServer = createServer(async (req, res) => {
+    // CORS for browser-based MCP clients
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Mcp-Session-Id");
+    res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+    if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
+
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => crypto.randomUUID() });
+    await server.connect(transport);
+    await transport.handleRequest(req, res);
+  });
+  httpServer.listen(PORT, () => {
+    console.error(`VEROQ MCP server (HTTP) listening on port ${PORT}`);
+  });
+} else {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+}
