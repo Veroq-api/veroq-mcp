@@ -3,6 +3,7 @@
 [![npm](https://img.shields.io/npm/v/veroq-mcp?color=2EE89A&label=npm)](https://www.npmjs.com/package/veroq-mcp)
 [![Downloads](https://img.shields.io/npm/dm/veroq-mcp?color=2EE89A)](https://www.npmjs.com/package/veroq-mcp)
 [![License](https://img.shields.io/badge/license-MIT-2EE89A)](LICENSE)
+[![smithery badge](https://smithery.ai/badge/Veroq/veroq)](https://smithery.ai/servers/Veroq/veroq)
 
 MCP server for [VEROQ](https://veroq.ai) — verified financial intelligence for AI agents.
 
