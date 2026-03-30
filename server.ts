@@ -124,10 +124,11 @@ function text(t: string) {
 
 // --- Server ---
 
-const server = new McpServer({
-  name: "veroq",
-  version: "1.0.0",
-});
+function createMcpServer(): McpServer {
+  return new McpServer({ name: "veroq", version: "1.1.0" });
+}
+
+const server = createMcpServer();
 
 // ── Hero Tools — Ask & Verify ──
 
@@ -2272,11 +2273,11 @@ const mode = process.env.MCP_TRANSPORT || (process.argv.includes("--http") ? "ht
 
 if (mode === "http") {
   const PORT = parseInt(process.env.PORT || "3100", 10);
+  const sessions = new Map<string, { transport: StreamableHTTPServerTransport }>();
 
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => crypto.randomUUID(),
-  });
-  await server.connect(transport);
+  // Collect tool registrations so we can replay them on new server instances
+  // The global `server` has all 52 tools — we use it for stdio mode
+  // For HTTP, we create fresh instances per session
 
   const httpServer = createServer(async (req, res) => {
     // CORS
@@ -2286,8 +2287,44 @@ if (mode === "http") {
     res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
     if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
 
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+
+    // Existing session — route to its transport
+    if (sessionId && sessions.has(sessionId)) {
+      await sessions.get(sessionId)!.transport.handleRequest(req, res);
+      return;
+    }
+
+    // New session — the global server can only connect once for stdio,
+    // but for HTTP we need per-session handling. Use a single stateless approach:
+    // create transport, connect server (closing previous if needed), handle request.
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => crypto.randomUUID(),
+    });
+
+    // For simplicity, reuse the global server — close previous transport first
+    try { await server.close(); } catch {}
+    await server.connect(transport);
     await transport.handleRequest(req, res);
+
+    // Track session for subsequent requests
+    const sid = (transport as any).sessionId as string | undefined;
+    if (sid) {
+      sessions.set(sid, { transport });
+      transport.onclose = () => sessions.delete(sid);
+    }
   });
+
+  // Clean stale sessions every 5 minutes
+  setInterval(() => {
+    if (sessions.size > 100) {
+      const oldest = [...sessions.keys()].slice(0, sessions.size - 50);
+      for (const sid of oldest) {
+        sessions.get(sid)?.transport.close?.();
+        sessions.delete(sid);
+      }
+    }
+  }, 300_000);
 
   httpServer.listen(PORT, () => {
     console.error(`VEROQ MCP server (HTTP) listening on port ${PORT}`);
