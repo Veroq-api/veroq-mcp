@@ -2272,18 +2272,23 @@ const mode = process.env.MCP_TRANSPORT || (process.argv.includes("--http") ? "ht
 
 if (mode === "http") {
   const PORT = parseInt(process.env.PORT || "3100", 10);
+
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: () => crypto.randomUUID(),
+  });
+  await server.connect(transport);
+
   const httpServer = createServer(async (req, res) => {
-    // CORS for browser-based MCP clients
+    // CORS
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Mcp-Session-Id");
     res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
     if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
 
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => crypto.randomUUID() });
-    await server.connect(transport);
     await transport.handleRequest(req, res);
   });
+
   httpServer.listen(PORT, () => {
     console.error(`VEROQ MCP server (HTTP) listening on port ${PORT}`);
   });
