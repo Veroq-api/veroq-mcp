@@ -1,0 +1,40 @@
+{
+  "name": "veroq-mcp",
+  "version": "1.1.0",
+  "description": "MCP server for VEROQ — verified financial intelligence for AI agents",
+  "type": "module",
+  "bin": {
+    "veroq-mcp": "./dist/server.js"
+  },
+  "main": "./dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.24.4"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "veroq",
+    "mcp",
+    "financial-intelligence",
+    "ai-agents",
+    "trading",
+    "market-data",
+    "claude",
+    "cursor"
+  ],
+  "license": "MIT",
+  "homepage": "https://veroq.ai",
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^6.0.2"
+  }
+}
