@@ -142,3 +142,10 @@ Open **Settings > MCP Servers > Add Server**:
 | `VEROQ_BASE_URL` | No | API base URL (default: `https://api.thepolarisreport.com`) |
 
 Note: `POLARIS_API_KEY` and `POLARIS_BASE_URL` are also accepted for backward compatibility.
+
+## Links
+
+- [VEROQ](https://veroq.ai) — Interactive demos
+- [API Reference](https://veroq.ai/api-reference) — 300+ endpoints
+- [Python SDK](https://github.com/Veroq-api/veroq-python)
+- [TypeScript SDK](https://github.com/Veroq-api/veroq-js)
