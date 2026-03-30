@@ -139,6 +139,7 @@ server.tool(
   {
     question: z.string().describe("Natural-language question to ask VEROQ (e.g. 'What is happening with NVIDIA?' or 'Compare Tesla and BYD')"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ question }) => {
     const data = (await api("POST", "/api/v1/ask", undefined, {
       question,
@@ -176,6 +177,7 @@ server.tool(
     claim: z.string().describe("The claim to fact-check (10-1000 characters)"),
     context: z.string().optional().describe("Category to narrow the search (e.g. 'tech', 'policy')"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ claim, context }) => {
     const data = (await api("POST", "/api/v1/verify", undefined, {
       claim,
@@ -225,6 +227,7 @@ server.tool(
     exclude_sources: z.string().optional().describe("Comma-separated domains to exclude"),
     limit: z.number().optional().describe("Max results (default 10)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ query, category, depth, include_sources, exclude_sources, limit }) => {
     const data = (await api("GET", "/api/v1/search", {
       q: query,
@@ -250,6 +253,7 @@ server.tool(
     include_sources: z.string().optional().describe("Comma-separated domains to include"),
     exclude_sources: z.string().optional().describe("Comma-separated domains to exclude"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ category, limit, include_sources, exclude_sources }) => {
     const data = (await api("GET", "/api/v1/feed", {
       category,
@@ -271,6 +275,7 @@ server.tool(
     brief_id: z.string().describe("Brief ID"),
     include_full_text: z.boolean().optional().describe("Include full body text (default true)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ brief_id, include_full_text }) => {
     const data = (await api("GET", `/api/v1/brief/${encodeURIComponent(brief_id)}`, {
       include_full_text: include_full_text ?? true,
@@ -288,6 +293,7 @@ server.tool(
   {
     urls: z.string().describe("Comma-separated URLs to extract (max 5)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ urls }) => {
     const urlList = urls.split(",").map((u) => u.trim()).filter(Boolean);
     const data = (await api("POST", "/api/v1/extract", undefined, {
@@ -314,6 +320,7 @@ server.tool(
   {
     name: z.string().describe("Entity name to look up"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ name }) => {
     const data = (await api("GET", `/api/v1/entities/${encodeURIComponent(name)}/briefs`)) as { briefs?: Brief[] };
     const briefs = data.briefs || [];
@@ -329,6 +336,7 @@ server.tool(
   {
     limit: z.number().optional().describe("Max entities to return"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ limit }) => {
     const data = (await api("GET", "/api/v1/entities/trending", {
       limit,
@@ -349,6 +357,7 @@ server.tool(
   {
     topic: z.string().describe("Topic to compare coverage on"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ topic }) => {
     // Find a relevant brief first
     const searchData = (await api("GET", "/api/v1/search", {
@@ -394,6 +403,7 @@ server.tool(
     category: z.string().optional().describe("Filter by category"),
     max_sources: z.number().optional().describe("Maximum sources to analyze"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ query, category, max_sources }) => {
     const data = (await api("POST", "/api/v1/research", undefined, {
       query,
@@ -457,6 +467,7 @@ server.tool(
   {
     brief_id: z.string().describe("Brief ID like PR-2026-0305-001"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ brief_id }) => {
     const data = (await api("GET", `/api/v1/brief/${encodeURIComponent(brief_id)}/timeline`)) as {
       brief_id?: string;
@@ -498,6 +509,7 @@ server.tool(
     topic: z.string().describe("Topic to forecast future developments for"),
     depth: z.enum(["fast", "standard", "deep"]).optional().describe("Analysis depth"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ topic, depth }) => {
     const data = (await api("POST", "/api/v1/forecast", undefined, {
       topic,
@@ -549,6 +561,7 @@ server.tool(
   {
     severity: z.string().optional().describe("Filter by severity level (e.g. high, medium, low)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ severity }) => {
     const data = (await api("GET", "/api/v1/contradictions", {
       severity,
@@ -584,6 +597,7 @@ server.tool(
     type: z.string().optional().describe("Event type to filter by"),
     subject: z.string().optional().describe("Subject or entity to filter events for"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ type, subject }) => {
     const data = (await api("GET", "/api/v1/events", {
       type,
@@ -624,6 +638,7 @@ server.tool(
     brief_id: z.string().describe("Brief ID like PR-2026-0305-001"),
     since: z.string().optional().describe("ISO timestamp to diff from (e.g. 2026-03-18T00:00:00Z)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ brief_id, since }) => {
     const data = (await api("GET", `/api/v1/brief/${encodeURIComponent(brief_id)}/diff`, {
       since,
@@ -679,6 +694,7 @@ server.tool(
     region: z.string().optional().describe("Region code (e.g. 'us', 'eu')"),
     verify: z.boolean().optional().describe("Enable VEROQ trust scoring on results"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ query, limit, freshness, region, verify }) => {
     const data = await api("GET", "/api/v1/web-search", {
       q: query,
@@ -701,6 +717,7 @@ server.tool(
     max_pages: z.number().optional().describe("Max pages to crawl (default 5)"),
     include_links: z.boolean().optional().describe("Include extracted links in response"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ url, depth, max_pages, include_links }) => {
     const data = await api("POST", "/api/v1/crawl", undefined, {
       url,
@@ -721,6 +738,7 @@ server.tool(
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, BTC)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(symbol.toUpperCase())}/price`)) as {
       status?: string;
@@ -752,6 +770,7 @@ server.tool(
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(symbol.toUpperCase())}/score`)) as {
       status?: string;
@@ -799,6 +818,7 @@ server.tool(
     days: z.number().optional().describe("Lookback period in days (default 7, max 30)"),
     limit: z.number().optional().describe("Max briefs to return (default 30)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ holdings, days, limit }) => {
     const data = (await api("POST", "/api/v1/portfolio/feed", { days, limit }, { holdings })) as {
       status?: string;
@@ -840,6 +860,7 @@ server.tool(
   {
     days: z.number().optional().describe("Lookback period in days (default 7)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ days }) => {
     const data = (await api("GET", "/api/v1/sectors", { days })) as {
       status?: string;
@@ -881,6 +902,7 @@ server.tool(
     interval: z.enum(["1d", "1wk", "1mo"]).optional().describe("Candle interval (default 1d)"),
     range: z.enum(["1mo", "3mo", "6mo", "1y", "2y", "5y"]).optional().describe("Date range (default 6mo)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol, interval, range }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(symbol.toUpperCase())}/candles`, {
       interval: interval || "1d",
@@ -920,6 +942,7 @@ server.tool(
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
     range: z.enum(["1mo", "3mo", "6mo", "1y", "2y", "5y"]).optional().describe("Date range for indicator calculation (default 6mo)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol, range }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(symbol.toUpperCase())}/technicals`, {
       range: range || "6mo",
@@ -952,6 +975,7 @@ server.tool(
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, GOOGL)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(symbol.toUpperCase())}/earnings`)) as {
       status?: string;
@@ -979,6 +1003,7 @@ server.tool(
   "veroq_market_movers",
   "Get today's top market movers: biggest gainers, biggest losers, and most actively traded stocks.",
   {},
+  { readOnlyHint: true, openWorldHint: true },
   async () => {
     const data = (await api("GET", "/api/v1/market/movers")) as {
       status?: string;
@@ -1017,6 +1042,7 @@ server.tool(
   "veroq_market_summary",
   "Get current values for major market indices: S&P 500, Nasdaq Composite, Dow Jones Industrial Average, and VIX volatility index.",
   {},
+  { readOnlyHint: true, openWorldHint: true },
   async () => {
     const data = (await api("GET", "/api/v1/market/summary")) as {
       status?: string;
@@ -1044,6 +1070,7 @@ server.tool(
     indicator: z.string().optional().describe("Specific indicator slug (e.g. gdp, cpi, unemployment, fed_funds, retail_sales). Omit for summary of all."),
     limit: z.number().optional().describe("Number of historical observations to return (default 30, max 100)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ indicator, limit }) => {
     if (indicator) {
       const data = (await api("GET", `/api/v1/economy/${encodeURIComponent(indicator)}`, { limit })) as {
@@ -1100,6 +1127,7 @@ server.tool(
   {
     pair: z.string().optional().describe("Forex pair (e.g. EURUSD, GBPUSD, USDJPY). Omit for all major pairs."),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ pair }) => {
     if (pair) {
       const data = (await api("GET", `/api/v1/forex/${encodeURIComponent(pair.toUpperCase())}`)) as {
@@ -1146,6 +1174,7 @@ server.tool(
   {
     symbol: z.string().optional().describe("Commodity slug (e.g. gold, silver, crude, natural_gas, copper, platinum). Omit for all."),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol }) => {
     if (symbol) {
       const data = (await api("GET", `/api/v1/commodities/${encodeURIComponent(symbol.toLowerCase())}`)) as {
@@ -1193,6 +1222,7 @@ server.tool(
   {
     symbol: z.string().optional().describe("Crypto symbol (e.g. BTC, ETH, SOL, ADA). Omit for market overview."),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol }) => {
     if (symbol) {
       const data = (await api("GET", `/api/v1/crypto/${encodeURIComponent(symbol.toUpperCase())}`)) as {
@@ -1251,6 +1281,7 @@ server.tool(
     symbol: z.string().describe("Crypto symbol (e.g. BTC, ETH, SOL)"),
     days: z.number().optional().describe("Number of days of history (default 30, max 365)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol, days }) => {
     const data = (await api("GET", `/api/v1/crypto/${encodeURIComponent(symbol.toUpperCase())}/chart`, {
       days: days || 30,
@@ -1297,6 +1328,7 @@ server.tool(
   {
     protocol: z.string().optional().describe("Protocol slug (e.g. aave, uniswap, lido, makerdao). Omit for DeFi overview."),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ protocol }) => {
     if (protocol) {
       const data = (await api("GET", `/api/v1/crypto/defi/${encodeURIComponent(protocol.toLowerCase())}`)) as {
@@ -1370,6 +1402,7 @@ server.tool(
     sort: z.string().optional().describe("Sort field (e.g. rsi, sentiment, market_cap, volume)"),
     limit: z.number().optional().describe("Max results (default 20)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ asset_type, sector, rsi_below, rsi_above, sentiment, macd_signal, earnings_within_days, price_min, price_max, min_volume, sort, limit }) => {
     const filters: Record<string, unknown> = {};
     if (rsi_below != null) filters.rsi_below = rsi_below;
@@ -1424,6 +1457,7 @@ server.tool(
   {
     preset_id: z.string().optional().describe("Preset ID to run. Omit to list all available presets."),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ preset_id }) => {
     if (preset_id) {
       const data = (await api("GET", `/api/v1/screener/presets/${encodeURIComponent(preset_id)}`)) as {
@@ -1489,6 +1523,7 @@ server.tool(
     alert_type: z.string().optional().describe("Alert type: price_above, price_below, rsi_above, rsi_below, sentiment_flip, volume_spike (required for create)"),
     threshold: z.number().optional().describe("Alert threshold value (required for create — price level or sentiment delta)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ action, ticker, alert_type, threshold }) => {
     if (action === "create") {
       if (!ticker || !alert_type) return text('Error: ticker and alert_type are required to create an alert.');
@@ -1556,6 +1591,7 @@ server.tool(
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, TSLA, BTC)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(symbol.toUpperCase())}/social`)) as {
       status?: string;
@@ -1602,6 +1638,7 @@ server.tool(
   "veroq_social_trending",
   "Get tickers and topics currently trending on social media. Shows the most discussed stocks and crypto across Reddit, Twitter, and other platforms.",
   {},
+  { readOnlyHint: true, openWorldHint: true },
   async () => {
     const data = (await api("GET", "/api/v1/social/trending")) as {
       status?: string;
@@ -1639,6 +1676,7 @@ server.tool(
     days: z.number().optional().describe("Lookback/forward window in days (default 30, max 90)"),
     limit: z.number().optional().describe("Max results (default 30, max 100)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ days, limit }) => {
     const data = (await api("GET", "/api/v1/market/ipos", {
       days,
@@ -1682,6 +1720,7 @@ server.tool(
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, BTC)"),
     limit: z.number().optional().describe("Max results (default 10)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol, limit }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(symbol.toUpperCase())}/news`, {
       limit,
@@ -1710,6 +1749,7 @@ server.tool(
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(symbol.toUpperCase())}/analysis`)) as {
       status?: string;
@@ -1768,6 +1808,7 @@ server.tool(
   {
     query: z.string().describe("Partial search query (minimum 2 characters)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ query }) => {
     const data = (await api("GET", "/api/v1/search/suggest", {
       q: query,
@@ -1810,6 +1851,7 @@ server.tool(
   {
     protocol: z.string().describe("Protocol slug (e.g. aave, uniswap, lido, makerdao, curve)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ protocol }) => {
     const data = (await api("GET", `/api/v1/crypto/defi/${encodeURIComponent(protocol.toLowerCase())}`)) as {
       status?: string;
@@ -1844,6 +1886,7 @@ server.tool(
     indicator: z.string().describe("Indicator slug (e.g. gdp, cpi, unemployment, fed_funds, retail_sales, housing_starts)"),
     limit: z.number().optional().describe("Number of historical observations to return (default 30, max 100)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ indicator, limit }) => {
     const data = (await api("GET", `/api/v1/economy/${encodeURIComponent(indicator)}`, { limit })) as {
       status?: string;
@@ -1883,6 +1926,7 @@ server.tool(
     ticker: z.string().describe("Ticker symbol to generate a report for (e.g. AAPL, BTC)"),
     tier: z.string().optional().describe("Report tier — 'quick' for a fast summary or 'deep' for full analysis (default 'quick')"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ ticker, tier }) => {
     const data = (await api("POST", "/api/v1/reports/generate", undefined, {
       ticker,
@@ -1912,6 +1956,7 @@ server.tool(
   {
     report_id: z.string().describe("The report ID to retrieve"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ report_id }) => {
     const data = (await api("GET", `/api/v1/reports/${encodeURIComponent(report_id)}`)) as {
       status?: string;
@@ -1951,6 +1996,7 @@ server.tool(
   {
     ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, BTC)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ ticker }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(ticker.toUpperCase())}/full`)) as {
       status?: string;
@@ -1999,6 +2045,7 @@ server.tool(
   {
     ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ ticker }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(ticker.toUpperCase())}/insider`)) as {
       status?: string;
@@ -2048,6 +2095,7 @@ server.tool(
   {
     ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ ticker }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(ticker.toUpperCase())}/filings`)) as {
       status?: string;
@@ -2092,6 +2140,7 @@ server.tool(
   {
     ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ ticker }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(ticker.toUpperCase())}/analysts`)) as {
       status?: string;
@@ -2140,6 +2189,7 @@ server.tool(
   {
     symbol: z.string().optional().describe("Ticker symbol to filter by (e.g. AAPL, NVDA). Omit for all recent congressional trades."),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol }) => {
     const data = (await api("GET", "/api/v1/congress/trades", {
       ...(symbol ? { symbol: symbol.toUpperCase() } : {}),
@@ -2184,6 +2234,7 @@ server.tool(
   {
     ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ ticker }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(ticker.toUpperCase())}/institutions`)) as {
       status?: string;
@@ -2236,6 +2287,7 @@ server.tool(
     slug: z.string().describe("Agent slug identifier (e.g. 'portfolio-review', 'due-diligence', 'market-scanner')"),
     inputs: z.record(z.unknown()).describe("Input parameters for the agent — varies by agent type (e.g. { ticker: 'AAPL' } or { tickers: ['AAPL', 'GOOGL'] })"),
   },
+  { readOnlyHint: true, openWorldHint: true },
   async ({ slug, inputs }) => {
     const data = (await api("POST", `/api/v1/agents/run/${encodeURIComponent(slug)}`, undefined, inputs)) as {
       status?: string;
@@ -2265,6 +2317,55 @@ server.tool(
     if (data.credits_used != null) parts.push(`\n_Credits used: ${data.credits_used}_`);
     return text(parts.join("\n"));
   }
+);
+
+
+// ── Prompts ──
+
+server.prompt(
+  "financial_analysis",
+  "Get a complete financial analysis of any ticker",
+  { ticker: z.string().describe("Stock ticker symbol (e.g., NVDA)") },
+  async ({ ticker }) => ({
+    messages: [{ role: "user" as const, content: { type: "text" as const, text: `Use the veroq_ask tool to get a complete analysis of ${ticker}. Include price, technicals, earnings, sentiment, and trade signal. Then use veroq_full to get the full profile.` } }]
+  })
+);
+
+server.prompt(
+  "fact_check",
+  "Verify a financial claim with evidence",
+  { claim: z.string().describe("The claim to verify") },
+  async ({ claim }) => ({
+    messages: [{ role: "user" as const, content: { type: "text" as const, text: `Use the veroq_verify tool to fact-check this claim: "${claim}". Show the verdict, confidence breakdown, and evidence chain.` } }]
+  })
+);
+
+server.prompt(
+  "market_overview",
+  "Get today's market overview with movers and trends",
+  async () => ({
+    messages: [{ role: "user" as const, content: { type: "text" as const, text: "Use veroq_market_summary to get major indices, veroq_market_movers for top gainers/losers, and veroq_ask to summarize today's market trends." } }]
+  })
+);
+
+// ── Resources ──
+
+server.resource(
+  "api-docs",
+  "https://veroq.ai/api-reference",
+  { mimeType: "text/html", description: "VEROQ API Reference — 300+ endpoints for financial intelligence" },
+  async () => ({
+    contents: [{ uri: "https://veroq.ai/api-reference", text: "VEROQ API Reference: https://veroq.ai/api-reference — 300+ endpoints covering ask, verify, search, price, technicals, screener, crypto, forex, commodities, economy, and more." }]
+  })
+);
+
+server.resource(
+  "pricing",
+  "https://veroq.ai/pricing",
+  { mimeType: "text/html", description: "VEROQ Pricing — Free tier: 1,000 credits/month" },
+  async () => ({
+    contents: [{ uri: "https://veroq.ai/pricing", text: "VEROQ Pricing: Free 1,000 credits/mo, Builder $24/mo (3K credits), Startup $79/mo (10K credits), Growth $179/mo (40K credits), Scale $399/mo (100K credits)." }]
+  })
 );
 
 // --- Start ---
