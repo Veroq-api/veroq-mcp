@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createVeroQTool } from "./veroq-tool-factory.js";
 import { createVerifiedSwarm, type SwarmRole } from "../swarm/index.js";
+import { createRuntime, getAvailableVerticals, type VerticalId } from "../runtime/index.js";
 import { submitFeedback, getFeedbackQueue, getFeedbackMetrics, type FeedbackReason } from "../feedback/index.js";
 
 type ApiFn = (
@@ -494,5 +495,89 @@ EXAMPLE: { "action": "metrics" }`,
     annotations: { readOnlyHint: false },
     category: "feedback",
     credits: 0,
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // 9. CREATE RUNTIME — domain-specific verified agent pipeline
+  // ═══════════════════════════════════════════════════════════
+
+  createVeroQTool(server, {
+    name: "veroq_create_runtime",
+    description: `Create and run a domain-specific verified agent pipeline.
+
+WHEN TO USE: When you need a full multi-agent workflow tailored to a specific domain — finance, legal, research, or compliance. Each domain comes with pre-configured roles, tools, safety rules, and verification guidelines.
+
+VERTICALS: finance (default, full-featured), legal, research, compliance, custom.
+
+RETURNS: Same as veroq_run_verified_swarm but with domain-specific safety rules, tool restrictions, and verification applied automatically.
+
+COST: ~10-25 credits depending on vertical and cost mode.
+
+EXAMPLE: { "vertical": "finance", "query": "Analyze NVDA for a long position" }
+EXAMPLE: { "vertical": "legal", "query": "Summarize GDPR data retention requirements", "costMode": "premium" }
+EXAMPLE: { "vertical": "compliance", "query": "Check KYC requirements for crypto exchanges" }`,
+    inputSchema: z.object({
+      vertical: z.enum(["finance", "legal", "research", "compliance", "custom"]).optional()
+        .describe("Domain vertical (default: finance)"),
+      query: z.string().describe("The question or analysis request"),
+      costMode: z.enum(["balanced", "cheap", "premium"]).optional()
+        .describe("Cost mode (default: from vertical kit)"),
+      creditBudget: z.number().optional().describe("Max credits (default: from vertical kit)"),
+      escalationThreshold: z.number().optional().describe("Escalation threshold (default: from vertical kit)"),
+      enableParallelSteps: z.boolean().optional().describe("Enable parallel execution (default: false)"),
+      enterpriseId: z.string().optional().describe("Enterprise ID for audit"),
+    }),
+    execute: async ({ vertical, query, costMode, creditBudget, escalationThreshold, enableParallelSteps, enterpriseId }) => {
+      const runtime = createRuntime({
+        vertical: (vertical || "finance") as VerticalId,
+        costMode: costMode as any,
+        creditBudget,
+        escalationThreshold,
+        enableParallelSteps,
+        enterpriseId,
+        apiFn: api as (method: "GET" | "POST", path: string, params?: Record<string, unknown>, body?: unknown) => Promise<unknown>,
+      });
+      const result = await runtime.run(query);
+      return { ...result, runtimeInfo: runtime.getInfo() } as unknown as Record<string, unknown>;
+    },
+    display: (result) => {
+      const r = result as unknown as {
+        runtimeInfo?: { vertical: string; costMode: string; creditBudget: number };
+        synthesis?: { summary?: string };
+        totalCreditsUsed: number;
+        totalDurationMs: number;
+        escalated: boolean;
+        budget: { remaining: number };
+        verificationSummary: { stepsVerified: number; stepsTotal: number; avgConfidence: number };
+        steps: Array<{ agent: { name: string }; output: { summary?: string }; escalated: boolean }>;
+      };
+
+      const parts: string[] = [];
+      const info = r.runtimeInfo;
+      if (info) {
+        parts.push(`Runtime: ${info.vertical} | ${info.costMode} mode | budget ${info.creditBudget}cr`);
+      }
+
+      const vs = r.verificationSummary;
+      parts.push(`Verified: ${vs.stepsVerified}/${vs.stepsTotal} steps, avg confidence ${vs.avgConfidence}/100`);
+      if (r.escalated) parts.push("⚠️ Escalated — review required");
+      parts.push("");
+
+      for (const step of r.steps || []) {
+        const esc = step.escalated ? " ⚠️" : "";
+        parts.push(`[${step.agent.name}${esc}] ${(step.output.summary || "").slice(0, 120)}`);
+      }
+
+      if (r.synthesis?.summary) {
+        parts.push("\n─── Synthesis ───");
+        parts.push(r.synthesis.summary.slice(0, 500));
+      }
+
+      parts.push(`\nCredits: ${r.totalCreditsUsed} (${r.budget.remaining} remaining) | ${Math.round(r.totalDurationMs / 1000)}s`);
+      return parts.join("\n");
+    },
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    category: "runtime",
+    credits: 10,
   });
 }

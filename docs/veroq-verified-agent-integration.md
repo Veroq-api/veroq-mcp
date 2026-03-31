@@ -32,7 +32,7 @@ VeroQ provides the verified truth layer for AI agents. This guide covers the thr
 │  recordToolCall() → latency, errors, escalations  │
 │  getMetricsSummary() → rates, breakdown           │
 ├──────────────────────────────────────────────────┤
-│              60 MCP Tools                         │
+│              61 MCP Tools                         │
 │  veroq_ask, veroq_verify, veroq_run_verified_swarm│
 ├──────────────────────────────────────────────────┤
 │              VeroQ API                            │
@@ -186,6 +186,10 @@ All endpoints accept `?period=24h|7d|30d` parameter.
 | `src/feedback/veroq-feedback-loop.ts` | Feedback loop — flagging, web search fallback, pipeline routing |
 | `src/feedback/index.ts` | Feedback module barrel export |
 | `test/feedback-loop.test.ts` | 17 tests — flagging, web search, pipeline, privacy, metrics |
+| `src/runtime/veroq-agent-runtime.ts` | Verified Agent Runtime — domain-specific pipeline factory |
+| `src/runtime/vertical-kits.ts` | Vertical kits — finance, legal, research, compliance, custom |
+| `src/runtime/index.ts` | Runtime module barrel export |
+| `test/agent-runtime.test.ts` | 22 tests — verticals, safety, execution, multi-kit, guidelines |
 | `server.ts` | Main MCP server with 52 tools (unchanged) |
 
 ### TradingAgents-Pro repo (demo)
@@ -472,6 +476,112 @@ Over time, the feedback loop drives:
 4. **Declining escalation rate** — enriched data reduces false positives
 5. **Enterprise trust metrics** — audit trail shows improvement trajectory
 
+### 7. General-Purpose Verified Agent Runtime (`src/runtime/`)
+
+Transforms the Verified Swarm into a multi-domain runtime by loading "vertical kits" — pre-packaged configurations for specific domains.
+
+#### Architecture
+
+```
+createRuntime({ vertical: "finance" })
+        │
+        ▼
+  ┌─────────────┐      ┌────────────────────┐
+  │ Vertical Kit │ ──→  │ Permission Engine   │ (domain deny/review rules)
+  │ (finance)    │      └────────────────────┘
+  │  roles       │      ┌────────────────────┐
+  │  tools       │ ──→  │ Verified Swarm      │ (execution, caching, parallel)
+  │  safety      │      └────────────────────┘
+  │  thresholds  │      ┌────────────────────┐
+  └─────────────┘ ──→  │ Feedback Loop       │ (self-improvement, web search)
+                        └────────────────────┘
+```
+
+#### Built-in Verticals
+
+| Vertical | Default Cost | Escalation | Denied Tools | Key Feature |
+|----------|-------------|------------|--------------|-------------|
+| **finance** | balanced | 80 | none | Full ticker/trade/verify pipeline |
+| **legal** | premium | 70 | trading signal, ticker analysis | Citation verification, no financial tools |
+| **research** | balanced | 85 | none | Multi-source fact-checking |
+| **compliance** | premium | 60 | trading signal | Risk assessor role, low escalation |
+| **custom** | balanced | 80 | none | User-defined everything |
+
+#### Usage Examples
+
+**Finance (default):**
+```typescript
+import { createRuntime } from "veroq-mcp";
+
+const runtime = createRuntime({ vertical: "finance", enterpriseId: "acme" });
+const result = await runtime.run("Analyze NVDA for a long position");
+```
+
+**Legal:**
+```typescript
+const runtime = createRuntime({
+  vertical: "legal",
+  costMode: "premium",
+  enterpriseId: "law-firm-1",
+});
+const result = await runtime.run("Summarize GDPR data retention requirements");
+// Trading tools are automatically denied
+```
+
+**Custom vertical:**
+```typescript
+import { registerVerticalKit, createRuntime } from "veroq-mcp";
+
+registerVerticalKit({
+  id: "healthcare",
+  name: "Healthcare Research",
+  defaultRoles: ["planner", "researcher", "verifier", "synthesizer"],
+  defaultAgents: [
+    { role: "planner", name: "Medical Planner", tool: "veroq_ask" },
+    { role: "researcher", name: "Medical Researcher", tool: "veroq_ask" },
+    { role: "verifier", name: "Clinical Verifier", tool: "veroq_verify" },
+    { role: "synthesizer", name: "Medical Synthesizer" },
+  ],
+  coreTools: ["veroq_ask", "veroq_verify"],
+  deniedTools: ["veroq_generate_trading_signal"],
+  reviewTools: ["veroq_ask"],
+  escalationThreshold: 65,
+  defaultCostMode: "premium",
+  defaultBudget: 30,
+  highStakesPatterns: ["dosage", "drug interaction"],
+  verificationGuidelines: "All medical claims require peer-reviewed sources.",
+});
+
+const runtime = createRuntime({ vertical: "healthcare" });
+```
+
+**MCP Tool:**
+```
+Tool: veroq_create_runtime
+Input: { "vertical": "legal", "query": "GDPR data retention requirements", "costMode": "premium" }
+```
+
+**SDK:**
+```typescript
+// TypeScript
+const result = await client.createRuntime("Analyze NVDA", { vertical: "finance" });
+
+// Python
+result = client.create_runtime("Analyze NVDA", vertical="finance")
+```
+
+#### How It Reuses the Existing Stack
+
+| Component | How the runtime uses it |
+|-----------|------------------------|
+| **Vertical kits** | Provide roles, tools, safety rules, verification guidelines |
+| **Verified Swarm** | Executes the pipeline with all existing features (budget, cache, parallel) |
+| **Permission engine** | Auto-applies domain-specific deny/review rules from the kit |
+| **Cost router** | Uses kit's `defaultCostMode` and `defaultBudget` |
+| **Feedback loop** | Routes flagged items through self-improvement with web search fallback |
+| **Observability** | All metrics flow through existing `recordToolCall()` |
+| **Server enhancer** | Verification metadata injected on every tool call |
+
 ## Team Rollout Checklist
 
 - [ ] Update SDK docs (Python, TypeScript) with verification metadata examples
@@ -499,6 +609,7 @@ Over time, the feedback loop drives:
 | High-Level Tools | 8 | ✓ |
 | Verified Swarm | 22 | ✓ |
 | Feedback Loop | 17 | ✓ |
+| Agent Runtime | 22 | ✓ |
 | Agent Coordinator | 22 | ✓ |
 | Fact Checker | 16 | ✓ |
-| **Total** | **124 (MCP) + 38 (demo)** | **All passing** |
+| **Total** | **166 (MCP) + 38 (demo)** | **All passing** |
