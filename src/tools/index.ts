@@ -96,3 +96,17 @@ export {
   type VerticalId,
   type VerticalKit,
 } from "../runtime/index.js";
+
+export {
+  ExternalMcpRegistry,
+  getExternalRegistry,
+  registerExternalMcpServer,
+  callExternalTool,
+  resetExternalRegistry,
+  type ExternalServerConfig,
+  type ExternalAuthConfig,
+  type ExternalAuthType,
+  type ExternalCallResult,
+  type ExternalServerInfo,
+  type TrustLevel,
+} from "../external/index.js";

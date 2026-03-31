@@ -11,6 +11,7 @@ import { createVeroQTool } from "./veroq-tool-factory.js";
 import { createVerifiedSwarm, type SwarmRole } from "../swarm/index.js";
 import { createRuntime, getAvailableVerticals, type VerticalId } from "../runtime/index.js";
 import { submitFeedback, getFeedbackQueue, getFeedbackMetrics, type FeedbackReason } from "../feedback/index.js";
+import { callExternalTool, getExternalRegistry } from "../external/index.js";
 
 type ApiFn = (
   method: "GET" | "POST",
@@ -579,5 +580,60 @@ EXAMPLE: { "vertical": "compliance", "query": "Check KYC requirements for crypto
     annotations: { readOnlyHint: true, openWorldHint: true },
     category: "runtime",
     credits: 10,
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // 10. CALL EXTERNAL TOOL — secure proxy to external MCP servers
+  // ═══════════════════════════════════════════════════════════
+
+  createVeroQTool(server, {
+    name: "veroq_call_external_tool",
+    description: `Call an external MCP tool through VeroQ's secure proxy.
+
+WHEN TO USE: When you need data from a registered external MCP server (e.g., market data providers, analytics APIs). Every call goes through permission checks, rate limiting, escalation, and audit logging.
+
+REQUIRES: External server must be pre-registered via registerExternalMcpServer() or runtime config.
+
+RETURNS: External tool response with permission result, decision lineage, escalation status, and cost info.
+
+COST: Varies by server config (default: 1 credit per call).
+
+EXAMPLE: { "serverId": "alphavantage", "toolName": "get_quote", "params": { "symbol": "NVDA" } }`,
+    inputSchema: z.object({
+      serverId: z.string().describe("ID of the registered external server"),
+      toolName: z.string().describe("Tool name on the external server"),
+      params: z.record(z.unknown()).optional().describe("Parameters to pass to the external tool"),
+    }),
+    execute: async ({ serverId, toolName, params }) => {
+      const result = await callExternalTool(serverId, toolName, params || {});
+      return result as unknown as Record<string, unknown>;
+    },
+    display: (result) => {
+      const r = result as unknown as {
+        serverId: string;
+        toolName: string;
+        data: Record<string, unknown>;
+        escalated: boolean;
+        escalationNotice?: string;
+        cached: boolean;
+        durationMs: number;
+        creditsUsed: number;
+        rateLimited: boolean;
+        permission: { decision: string };
+      };
+      const parts: string[] = [];
+      parts.push(`External: ${r.serverId}/${r.toolName}`);
+      if (r.cached) parts.push(" (cached)");
+      if (r.rateLimited) return `Rate limited: ${r.serverId} (try again later)`;
+      if (r.permission?.decision === "deny") return `Denied: ${r.serverId}/${r.toolName}`;
+      if (r.escalated) parts.push(`\n⚠️ ${r.escalationNotice}`);
+      if (r.data?.error) parts.push(`\nError: ${r.data.error}`);
+      else parts.push(`\n${JSON.stringify(r.data, null, 2).slice(0, 2000)}`);
+      parts.push(`\n${r.creditsUsed}cr | ${r.durationMs}ms`);
+      return parts.join("");
+    },
+    annotations: { readOnlyHint: false, openWorldHint: true },
+    category: "external",
+    credits: 1,
   });
 }

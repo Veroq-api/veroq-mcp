@@ -33,6 +33,11 @@ import {
 } from "./vertical-kits.js";
 import type { FeedbackEntry } from "../feedback/index.js";
 import type { WebSearchFallbackResult } from "../feedback/veroq-feedback-loop.js";
+import {
+  getExternalRegistry,
+  ExternalMcpRegistry,
+  type ExternalServerConfig,
+} from "../external/index.js";
 
 // ── Types ──
 
@@ -74,6 +79,8 @@ export interface RuntimeConfig {
 
   /** Custom vertical kit (for vertical="custom") */
   customKit?: Partial<VerticalKit>;
+  /** External MCP servers to register for secure proxied calls */
+  externalServers?: ExternalServerConfig[];
 }
 
 export interface RuntimeInfo {
@@ -200,6 +207,19 @@ export class VerifiedAgentRuntime {
         escalationThreshold: this.swarmConfig.escalationThreshold ?? 80,
       });
     }
+
+    // Register external MCP servers
+    if (config.externalServers) {
+      const registry = getExternalRegistry();
+      for (const serverConfig of config.externalServers) {
+        registry.registerServer(serverConfig);
+      }
+    }
+  }
+
+  /** Get the external MCP registry */
+  getExternalRegistry(): ExternalMcpRegistry {
+    return getExternalRegistry();
   }
 
   /** Get runtime info for introspection */

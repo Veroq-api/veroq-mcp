@@ -47,7 +47,7 @@ describe("high-level-tools", () => {
     clearAuditLog();
   });
 
-  it("registers all 9 high-level tools", () => {
+  it("registers all 10 high-level tools", () => {
     const server = freshServer();
     registerHighLevelTools(server, mockApi as any);
 
@@ -62,6 +62,7 @@ describe("high-level-tools", () => {
       "veroq_run_verified_swarm",
       "veroq_process_feedback",
       "veroq_create_runtime",
+      "veroq_call_external_tool",
     ];
     for (const name of hlTools) {
       assert.ok(tools.find(t => t.name === name), `Missing: ${name}`);

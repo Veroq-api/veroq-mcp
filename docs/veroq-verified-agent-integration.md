@@ -32,7 +32,7 @@ VeroQ provides the verified truth layer for AI agents. This guide covers the thr
 │  recordToolCall() → latency, errors, escalations  │
 │  getMetricsSummary() → rates, breakdown           │
 ├──────────────────────────────────────────────────┤
-│              61 MCP Tools                         │
+│              62 MCP Tools                         │
 │  veroq_ask, veroq_verify, veroq_run_verified_swarm│
 ├──────────────────────────────────────────────────┤
 │              VeroQ API                            │
@@ -189,7 +189,10 @@ All endpoints accept `?period=24h|7d|30d` parameter.
 | `src/runtime/veroq-agent-runtime.ts` | Verified Agent Runtime — domain-specific pipeline factory |
 | `src/runtime/vertical-kits.ts` | Vertical kits — finance, legal, research, compliance, custom |
 | `src/runtime/index.ts` | Runtime module barrel export |
-| `test/agent-runtime.test.ts` | 22 tests — verticals, safety, execution, multi-kit, guidelines |
+| `test/agent-runtime.test.ts` | 23 tests — verticals, safety, execution, multi-kit, guidelines |
+| `src/external/veroq-external-mcp.ts` | Secure external MCP proxy — registration, permissions, rate limiting |
+| `src/external/index.ts` | External module barrel export |
+| `test/external-mcp.test.ts` | 22 tests — registration, permissions, escalation, caching, security |
 | `server.ts` | Main MCP server with 52 tools (unchanged) |
 
 ### TradingAgents-Pro repo (demo)
@@ -582,6 +585,104 @@ result = client.create_runtime("Analyze NVDA", vertical="finance")
 | **Observability** | All metrics flow through existing `recordToolCall()` |
 | **Server enhancer** | Verification metadata injected on every tool call |
 
+### 8. Secure External MCP Ecosystem (`src/external/`)
+
+Allows customers to safely call approved external MCP servers or APIs while keeping all calls under VeroQ's full security and observability stack.
+
+#### Security Model
+
+Every external tool call passes through 7 layers:
+
+```
+External Call → Permission Engine → Rate Limiter → Cache Check →
+  Execution (with auth) → Output Safety → Decision Lineage → Observability
+```
+
+**Risks mitigated:**
+- **Least-privilege**: Only explicitly allowed tools can be called (no wildcards by default)
+- **Trust levels**: `read-only` (safe), `write` (high-stakes triggers review), `high-risk` (always escalates)
+- **Credential isolation**: Auth tokens stored in memory only, never logged or passed to lineage/audit
+- **Rate limiting**: Per-server rate limits prevent abuse and cost overrun
+- **Input/output sanitization**: PII redacted from audit trail
+- **Budget enforcement**: External calls consume credits, tracked in swarm budget
+
+#### Registration
+
+```typescript
+import { registerExternalMcpServer } from "veroq-mcp";
+
+registerExternalMcpServer({
+  serverId: "alphavantage",
+  name: "Alpha Vantage Market Data",
+  serverUrl: "https://api.alphavantage.co",
+  auth: { type: "api-key", credential: process.env.ALPHAVANTAGE_KEY },
+  allowedTools: ["get_quote", "get_history", "get_fundamentals"],
+  trustLevel: "read-only",
+  creditsPerCall: 1,
+  rateLimitPerMinute: 30,
+  cachePolicy: { enabled: true, ttlMs: 60_000 },
+});
+```
+
+#### Via Runtime Config
+
+```typescript
+const runtime = createRuntime({
+  vertical: "finance",
+  externalServers: [
+    {
+      serverId: "bloomberg",
+      name: "Bloomberg Terminal",
+      serverUrl: "https://api.bloomberg.com",
+      auth: { type: "oauth", credential: "short-lived-token" },
+      allowedTools: ["get_security", "get_analytics"],
+      trustLevel: "read-only",
+      creditsPerCall: 2,
+      rateLimitPerMinute: 60,
+    },
+  ],
+});
+```
+
+#### Calling External Tools
+
+**MCP Tool:**
+```
+Tool: veroq_call_external_tool
+Input: { "serverId": "alphavantage", "toolName": "get_quote", "params": { "symbol": "NVDA" } }
+```
+
+**SDK:**
+```typescript
+// TypeScript
+const result = await client.callExternalTool("alphavantage", "get_quote", { symbol: "NVDA" });
+
+// Python
+result = client.call_external_tool("alphavantage", "get_quote", {"symbol": "NVDA"})
+```
+
+#### Finance Vertical Safe Defaults
+
+The finance vertical allows read-only market data providers by default:
+- Read-only tools: allowed (get_quote, get_history, get_fundamentals)
+- Write tools: require review (submit_order, cancel_order)
+- High-risk tools: always escalate (execute_trade, margin_call)
+- Trading execution: denied by default
+
+#### How It Reuses the Full Stack
+
+| Component | How external calls use it |
+|-----------|--------------------------|
+| **Permission engine** | Domain deny/review rules apply to `external_*` prefixed tools |
+| **Decision lineage** | Full rule evaluation trace for every external call |
+| **Escalation** | Trust-level + high-stakes detection triggers review |
+| **Observability** | `recordToolCall()` with external prefix, server-level metrics |
+| **Rate limiting** | Per-server sliding window (calls/minute) |
+| **Caching** | TTL-based, keyed on server+tool+params |
+| **Budget tracking** | Credits consumed per call, tracked in swarm budget |
+| **Feedback loop** | Low-confidence external results flagged for self-improvement |
+| **Audit trail** | Every call logged with sanitized input, no credentials in logs |
+
 ## Team Rollout Checklist
 
 - [ ] Update SDK docs (Python, TypeScript) with verification metadata examples
@@ -611,6 +712,7 @@ result = client.create_runtime("Analyze NVDA", vertical="finance")
 | Cost Router | 20 | ✓ |
 | Feedback Loop | 17 | ✓ |
 | Agent Runtime | 23 | ✓ |
+| External MCP | 22 | ✓ |
 | Agent Coordinator | 22 | ✓ |
 | Fact Checker | 16 | ✓ |
-| **Total** | **167 (MCP) + 38 (demo)** | **All passing** |
+| **Total** | **189 (MCP) + 38 (demo)** | **All passing** |
