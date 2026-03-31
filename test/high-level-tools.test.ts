@@ -146,11 +146,18 @@ describe("high-level-tools", () => {
     registerHighLevelTools(server, mockApi as any);
 
     const tools = getRegisteredTools();
-    for (const name of ["veroq_analyze_ticker", "veroq_verify_market_claim", "veroq_generate_trading_signal"]) {
+    // Validate ALL high-level tools (not just 3)
+    const allHLTools = [
+      "veroq_analyze_ticker", "veroq_verify_market_claim", "veroq_generate_trading_signal",
+      "veroq_comprehensive_intelligence", "veroq_compare_tickers", "veroq_tool_search",
+      "veroq_run_verified_swarm", "veroq_process_feedback", "veroq_create_runtime",
+      "veroq_call_external_tool",
+    ];
+    for (const name of allHLTools) {
       const tool = tools.find(t => t.name === name);
       assert.ok(tool, `Missing: ${name}`);
       assert.ok(tool!.description.includes("WHEN TO USE"), `${name} missing WHEN TO USE`);
-      assert.ok(tool!.description.includes("RETURNS"), `${name} missing RETURNS`);
+      assert.ok(tool!.description.includes("RETURNS") || tool!.description.includes("ACTIONS"), `${name} missing RETURNS/ACTIONS`);
       assert.ok(tool!.description.includes("COST"), `${name} missing COST`);
       assert.ok(tool!.description.includes("EXAMPLE"), `${name} missing EXAMPLE`);
     }

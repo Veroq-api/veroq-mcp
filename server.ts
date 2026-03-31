@@ -287,7 +287,12 @@ CONSTRAINTS: Claim must be 10-1000 characters. Be specific — include names, nu
 // 3. veroq_search
 server.tool(
   "veroq_search",
-  "Search verified intelligence briefs by topic. Returns headline, confidence score, category, and summary for each result.",
+  `Search verified intelligence briefs by keyword or topic.
+
+WHEN TO USE: When looking for specific news, events, or coverage on a topic. Use veroq_ask for natural-language questions instead.
+RETURNS: Array of briefs with headline, confidence score, category, summary, and brief ID.
+COST: 1 credit.
+EXAMPLE: { "query": "NVIDIA earnings", "category": "Technology", "limit": 5 }`,
   {
     query: z.string().describe("Search query"),
     category: z.string().optional().describe("Filter by category"),
@@ -314,7 +319,12 @@ server.tool(
 // 2. veroq_feed
 server.tool(
   "veroq_feed",
-  "Get the latest verified intelligence briefs. Optionally filter by category or source domain.",
+  `Get the latest verified intelligence briefs in reverse-chronological order.
+
+WHEN TO USE: For browsing recent news without a specific search query. Use veroq_search when you have a topic in mind.
+RETURNS: Array of briefs with headline, confidence score, category, and summary.
+COST: 1 credit.
+EXAMPLE: { "category": "Markets", "limit": 10 }`,
   {
     category: z.string().optional().describe("Filter by category"),
     limit: z.number().optional().describe("Max results (default 20)"),
@@ -337,7 +347,12 @@ server.tool(
 // 3. veroq_brief
 server.tool(
   "veroq_brief",
-  "Get full details for a specific brief by ID, including body, sources, entities, counter-argument, and provenance.",
+  `Get full details for a specific intelligence brief by its ID.
+
+WHEN TO USE: After finding a brief via search/feed, use this to read the full body, sources, entities, and counter-argument.
+RETURNS: Full brief with body text, sources (with trust levels), entities, counter-argument, and provenance (confidence, bias, AI/human split).
+COST: 1 credit.
+EXAMPLE: { "brief_id": "PR-2026-0305-001" }`,
   {
     brief_id: z.string().describe("Brief ID"),
     include_full_text: z.boolean().optional().describe("Include full body text (default true)"),
@@ -355,7 +370,13 @@ server.tool(
 // 4. veroq_extract
 server.tool(
   "veroq_extract",
-  "Extract article content from one or more URLs. Returns title, domain, word count, and text for each.",
+  `Extract article content from one or more URLs into clean text.
+
+WHEN TO USE: When you need the full text of a news article or web page for analysis. Handles paywalls where possible.
+RETURNS: Per-URL results with title, domain, word count, and extracted text (truncated at 2000 chars).
+COST: 3 credits.
+EXAMPLE: { "urls": "https://reuters.com/article/123,https://bloomberg.com/news/456" }
+CONSTRAINTS: Max 5 URLs per request.`,
   {
     urls: z.string().describe("Comma-separated URLs to extract (max 5)"),
   },
@@ -381,7 +402,12 @@ server.tool(
 // 5. veroq_entities
 server.tool(
   "veroq_entities",
-  "Get all briefs mentioning a specific entity (person, org, location, etc.).",
+  `Get all intelligence briefs mentioning a specific entity (person, company, location, etc.).
+
+WHEN TO USE: When tracking coverage of a specific person, organization, or place across all briefs.
+RETURNS: Array of briefs mentioning the entity, with headline, confidence, category, and summary.
+COST: 1 credit.
+EXAMPLE: { "name": "Elon Musk" }`,
   {
     name: z.string().describe("Entity name to look up"),
   },
@@ -396,7 +422,12 @@ server.tool(
 // 6. veroq_trending
 server.tool(
   "veroq_trending",
-  "Get trending entities — people, orgs, and topics with the most recent mentions.",
+  `Get trending entities — people, orgs, and topics with the most mentions in the last 24 hours.
+
+WHEN TO USE: To discover what's dominating the news cycle right now. Good starting point for research.
+RETURNS: Array of entities with name, type, ticker (if applicable), and 24h mention count.
+COST: 1 credit.
+EXAMPLE: { "limit": 10 }`,
   {
     limit: z.number().optional().describe("Max entities to return"),
   },
@@ -416,7 +447,12 @@ server.tool(
 // 7. veroq_compare
 server.tool(
   "veroq_compare",
-  "Compare how different sources cover a topic. Finds a relevant brief, then analyzes per-source bias and generates a synthesis.",
+  `Compare how different news sources cover the same topic, with per-source bias analysis and synthesis.
+
+WHEN TO USE: When you need to understand media bias or see how coverage of an event differs across outlets.
+RETURNS: Topic headline, VEROQ confidence/bias scores, per-source analysis, and overall synthesis.
+COST: 2 credits.
+EXAMPLE: { "topic": "Federal Reserve rate decision" }`,
   {
     topic: z.string().describe("Topic to compare coverage on"),
   },
@@ -459,7 +495,12 @@ server.tool(
 // 8. veroq_research
 server.tool(
   "veroq_research",
-  "Run deep research on a topic. Returns a comprehensive report with key findings, entity map, and information gaps.",
+  `Run deep multi-source research on a topic. Produces a structured report with key findings, entity map, and information gaps.
+
+WHEN TO USE: For thorough investigation of a topic requiring analysis across many sources. Use veroq_search for quick lookups instead.
+RETURNS: Summary, key findings, analysis, confidence assessment, entity map (with co-occurrences), information gaps, and sources used.
+COST: 3 credits.
+EXAMPLE: { "query": "impact of AI regulation on semiconductor stocks", "max_sources": 20 }`,
   {
     query: z.string().describe("Research query"),
     category: z.string().optional().describe("Filter by category"),
@@ -524,7 +565,12 @@ server.tool(
 // 10. veroq_timeline
 server.tool(
   "veroq_timeline",
-  "Get the story evolution timeline for a living brief — shows how coverage developed over time with versioned updates, confidence changes, and new sources.",
+  `Get the story evolution timeline for a living brief — versioned updates, confidence changes, and new sources over time.
+
+WHEN TO USE: To see how a story developed over time. Requires a brief ID from search/feed.
+RETURNS: Array of timeline entries with version number, timestamp, summary, confidence score, changes, and new sources.
+COST: 2 credits.
+EXAMPLE: { "brief_id": "PR-2026-0305-001" }`,
   {
     brief_id: z.string().describe("Brief ID like PR-2026-0305-001"),
   },
@@ -564,7 +610,12 @@ server.tool(
 // 11. veroq_forecast
 server.tool(
   "veroq_forecast",
-  "Generate a forward-looking forecast for a topic based on current intelligence trends, momentum signals, and historical patterns.",
+  `Generate a forward-looking forecast for a topic based on intelligence trends, momentum, and historical patterns.
+
+WHEN TO USE: When you need predictive analysis — likely outcomes, scenarios, and risk factors for a topic.
+RETURNS: Outlook, confidence, time horizon, key drivers, risks, probability-weighted scenarios, and supporting briefs.
+COST: 2 credits.
+EXAMPLE: { "topic": "US inflation trajectory", "depth": "deep" }`,
   {
     topic: z.string().describe("Topic to forecast future developments for"),
     depth: z.enum(["fast", "standard", "deep"]).optional().describe("Analysis depth"),
@@ -616,7 +667,12 @@ server.tool(
 // 12. veroq_contradictions
 server.tool(
   "veroq_contradictions",
-  "Find contradictions across the intelligence brief network — stories where sources disagree on facts, framing, or conclusions.",
+  `Find contradictions across intelligence briefs — stories where sources disagree on facts, framing, or conclusions.
+
+WHEN TO USE: To identify conflicting narratives and disputed claims in the news. Useful for risk assessment and due diligence.
+RETURNS: Array of contradictions with severity, topic, summary, and opposing brief positions (Side A vs Side B).
+COST: 2 credits.
+EXAMPLE: { "severity": "high" }`,
   {
     severity: z.string().optional().describe("Filter by severity level (e.g. high, medium, low)"),
   },
@@ -650,7 +706,12 @@ server.tool(
 // 13. veroq_events
 server.tool(
   "veroq_events",
-  "Get notable events detected across intelligence briefs — significant developments, announcements, and inflection points.",
+  `Get notable events detected across intelligence briefs — significant developments, announcements, and inflection points.
+
+WHEN TO USE: To discover major events like product launches, policy changes, or market-moving announcements. Filter by type or subject.
+RETURNS: Array of events with type, subject, headline, summary, impact score, detected timestamp, and related brief IDs.
+COST: 2 credits.
+EXAMPLE: { "type": "earnings", "subject": "NVDA" }`,
   {
     type: z.string().optional().describe("Event type to filter by"),
     subject: z.string().optional().describe("Subject or entity to filter events for"),
@@ -690,7 +751,12 @@ server.tool(
 // 14. veroq_diff
 server.tool(
   "veroq_diff",
-  "Get a diff of changes to a living brief since a given time — shows what was added, removed, or changed between versions.",
+  `Get a diff of changes to a living brief since a given time — additions, removals, and modifications between versions.
+
+WHEN TO USE: To see exactly what changed in a brief since a specific timestamp. Requires a brief ID.
+RETURNS: Version range, confidence change, field-level changes (old/new values), and newly added sources.
+COST: 2 credits.
+EXAMPLE: { "brief_id": "PR-2026-0305-001", "since": "2026-03-18T00:00:00Z" }`,
   {
     brief_id: z.string().describe("Brief ID like PR-2026-0305-001"),
     since: z.string().optional().describe("ISO timestamp to diff from (e.g. 2026-03-18T00:00:00Z)"),
@@ -742,7 +808,12 @@ server.tool(
 // 15. veroq_web_search
 server.tool(
   "veroq_web_search",
-  "Search the web with optional VEROQ trust scoring. Returns web results with relevance and optional verification.",
+  `Search the live web with optional VEROQ trust scoring on results.
+
+WHEN TO USE: When intelligence briefs don't cover a topic and you need live web results. Enable verify=true for trust scoring.
+RETURNS: Web search results with titles, URLs, snippets, relevance scores, and optional verification scores.
+COST: 3 credits.
+EXAMPLE: { "query": "TSLA cybertruck delivery numbers 2026", "freshness": "week", "verify": true }`,
   {
     query: z.string().describe("Web search query"),
     limit: z.number().optional().describe("Max results (default 5)"),
@@ -765,7 +836,13 @@ server.tool(
 // 16. veroq_crawl
 server.tool(
   "veroq_crawl",
-  "Extract structured content from a URL with optional link following. Returns page content, metadata, and discovered links.",
+  `Crawl a URL and extract structured content with optional link following.
+
+WHEN TO USE: When you need to extract and analyze content from a specific webpage, or crawl a site's link structure.
+RETURNS: Page content, metadata, and discovered links per page crawled.
+COST: 3 credits.
+EXAMPLE: { "url": "https://sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=AAPL", "depth": 1 }
+CONSTRAINTS: Max depth 3, max 10 pages per crawl.`,
   {
     url: z.string().describe("URL to crawl and extract content from"),
     depth: z.number().optional().describe("Crawl depth (default 1)"),
@@ -788,7 +865,12 @@ server.tool(
 // 17. veroq_ticker_price
 server.tool(
   "veroq_ticker_price",
-  "Get the live market price for a stock or crypto ticker. Returns current price, change, percent change, and volume.",
+  `Get the live market price for a stock or crypto ticker.
+
+WHEN TO USE: For a quick price check on any ticker. This is free — use it freely. For full analysis, use veroq_full instead.
+RETURNS: Current price, change, change percent, volume, currency, and market state (open/closed).
+COST: Free (0 credits).
+EXAMPLE: { "symbol": "AAPL" }`,
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, BTC)"),
   },
@@ -819,7 +901,12 @@ server.tool(
 // 18. veroq_ticker_score
 server.tool(
   "veroq_ticker_score",
-  "Get a composite trading signal score for a ticker based on news sentiment, momentum, coverage volume, and event proximity. Returns signal (strong_bullish to strong_bearish) with component breakdown.",
+  `Get a composite trading signal score for a ticker based on sentiment, momentum, coverage volume, and event proximity.
+
+WHEN TO USE: For a quick bull/bear signal on a ticker. Use veroq_ticker_analysis for deeper context behind the signal.
+RETURNS: Composite score, signal (strong_bullish to strong_bearish), and component breakdown (sentiment, momentum, volume, events with weights).
+COST: 2 credits.
+EXAMPLE: { "symbol": "NVDA" }`,
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
@@ -861,7 +948,12 @@ server.tool(
 // 19. veroq_portfolio_feed
 server.tool(
   "veroq_portfolio_feed",
-  "Get intelligence briefs ranked by relevance to your portfolio holdings. Pass an array of ticker/weight pairs to get portfolio-aware news ranked by impact.",
+  `Get intelligence briefs ranked by relevance to your portfolio holdings.
+
+WHEN TO USE: When monitoring news for a specific portfolio. Pass ticker/weight pairs to get impact-ranked coverage.
+RETURNS: Holdings summary (briefs count, sentiment per ticker), portfolio-relevant briefs ranked by relevance score.
+COST: 2 credits.
+EXAMPLE: { "holdings": [{ "ticker": "AAPL", "weight": 0.3 }, { "ticker": "NVDA", "weight": 0.2 }], "days": 7 }`,
   {
     holdings: z.array(z.object({
       ticker: z.string().describe("Ticker symbol"),
@@ -907,7 +999,12 @@ server.tool(
 // 20. veroq_sectors
 server.tool(
   "veroq_sectors",
-  "Get a sector overview with aggregate sentiment scores and brief counts. Shows which market sectors have the most positive or negative news coverage.",
+  `Get a sector overview with aggregate sentiment scores and brief counts across all market sectors.
+
+WHEN TO USE: For a macro view of which sectors have the most bullish or bearish news coverage. Good for sector rotation analysis.
+RETURNS: Per-sector data: ticker count, brief count, average sentiment, and top tickers with individual sentiment.
+COST: 1 credit.
+EXAMPLE: { "days": 7 }`,
   {
     days: z.number().optional().describe("Lookback period in days (default 7)"),
   },
@@ -946,7 +1043,12 @@ server.tool(
 // 21. veroq_candles
 server.tool(
   "veroq_candles",
-  "Get OHLCV candlestick data for a stock ticker. Use for price chart analysis and technical trading.",
+  `Get OHLCV candlestick data for a stock ticker — open, high, low, close, and volume.
+
+WHEN TO USE: For price chart analysis, pattern recognition, or feeding data into technical analysis. Use veroq_technicals for pre-computed indicators.
+RETURNS: Array of candles with date, open, high, low, close, volume. Latest candle highlighted.
+COST: 2 credits.
+EXAMPLE: { "symbol": "AAPL", "interval": "1d", "range": "3mo" }`,
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, MSFT, GOOGL)"),
     interval: z.enum(["1d", "1wk", "1mo"]).optional().describe("Candle interval (default 1d)"),
@@ -986,7 +1088,12 @@ server.tool(
 // 22. veroq_technicals
 server.tool(
   "veroq_technicals",
-  "Get all major technical indicators for a ticker at once: RSI, MACD, Bollinger Bands, moving averages, and an overall signal summary (bullish/bearish/neutral).",
+  `Get all major technical indicators for a ticker: RSI, MACD, Bollinger Bands, moving averages, and overall signal summary.
+
+WHEN TO USE: For pre-computed technical analysis. Returns a bullish/bearish/neutral signal. Use veroq_candles for raw price data instead.
+RETURNS: Signal summary (signal + bullish/bearish/neutral counts) and full indicator values (RSI, MACD, BBands, SMA, EMA).
+COST: 2 credits.
+EXAMPLE: { "symbol": "TSLA", "range": "6mo" }`,
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
     range: z.enum(["1mo", "3mo", "6mo", "1y", "2y", "5y"]).optional().describe("Date range for indicator calculation (default 6mo)"),
@@ -1019,7 +1126,12 @@ server.tool(
 // 23. veroq_earnings
 server.tool(
   "veroq_earnings",
-  "Get next earnings date, EPS estimates, and revenue estimates for a stock ticker.",
+  `Get next earnings date, EPS estimates, and revenue estimates for a stock ticker.
+
+WHEN TO USE: To check when a company reports earnings and what the Street expects. Useful before earnings season.
+RETURNS: Next earnings date, fiscal quarter, EPS estimate, and revenue estimate.
+COST: 2 credits.
+EXAMPLE: { "symbol": "NVDA" }`,
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, GOOGL)"),
   },
@@ -1048,7 +1160,12 @@ server.tool(
 // 24. veroq_market_movers
 server.tool(
   "veroq_market_movers",
-  "Get today's top market movers: biggest gainers, biggest losers, and most actively traded stocks.",
+  `Get today's top market movers: biggest gainers, losers, and most actively traded stocks.
+
+WHEN TO USE: For a quick snapshot of what's moving the market today. No parameters needed.
+RETURNS: Top gainers (symbol, price, change%), top losers, and most active by volume.
+COST: 1 credit.
+EXAMPLE: {}`,
   {},
   async () => {
     const data = (await api("GET", "/api/v1/market/movers")) as {
@@ -1086,7 +1203,12 @@ server.tool(
 // 25. veroq_market_summary
 server.tool(
   "veroq_market_summary",
-  "Get current values for major market indices: S&P 500, Nasdaq Composite, Dow Jones Industrial Average, and VIX volatility index.",
+  `Get current values for major market indices: S&P 500, Nasdaq, Dow Jones, and VIX.
+
+WHEN TO USE: For a quick check on how the overall market is doing. No parameters needed.
+RETURNS: Each index with price, change, and change percent.
+COST: 1 credit.
+EXAMPLE: {}`,
   {},
   async () => {
     const data = (await api("GET", "/api/v1/market/summary")) as {
@@ -1110,7 +1232,12 @@ server.tool(
 // 26. veroq_economy
 server.tool(
   "veroq_economy",
-  "Get macroeconomic indicators from FRED (Federal Reserve). With no arguments returns a summary of all key indicators (GDP, CPI, unemployment, etc.). Pass a specific indicator slug for detailed history.",
+  `Get macroeconomic indicators from FRED. No arguments returns a summary of all key indicators; pass a slug for detailed history.
+
+WHEN TO USE: For macro data like GDP, CPI, unemployment, fed funds rate. Use veroq_economy_indicator for a single indicator with history.
+RETURNS: Summary mode: all indicators with latest values. Detail mode: series info, latest value, and historical observations.
+COST: 2 credits.
+EXAMPLE: { "indicator": "cpi", "limit": 12 }`,
   {
     indicator: z.string().optional().describe("Specific indicator slug (e.g. gdp, cpi, unemployment, fed_funds, retail_sales). Omit for summary of all."),
     limit: z.number().optional().describe("Number of historical observations to return (default 30, max 100)"),
@@ -1167,7 +1294,12 @@ server.tool(
 // 27. veroq_forex
 server.tool(
   "veroq_forex",
-  "Get current foreign exchange rates. With no arguments returns all major forex pairs. Pass a specific pair (e.g. EURUSD) for a single rate.",
+  `Get current foreign exchange rates. No arguments returns all major pairs; pass a pair code for a single rate.
+
+WHEN TO USE: For currency exchange rates and FX market data.
+RETURNS: Rate, change, change percent per pair. Single pair mode includes label and timestamp.
+COST: 2 credits.
+EXAMPLE: { "pair": "EURUSD" }`,
   {
     pair: z.string().optional().describe("Forex pair (e.g. EURUSD, GBPUSD, USDJPY). Omit for all major pairs."),
   },
@@ -1213,7 +1345,12 @@ server.tool(
 // 28. veroq_commodities
 server.tool(
   "veroq_commodities",
-  "Get commodity prices (gold, silver, oil, natural gas, etc.). With no arguments returns all tracked commodities. Pass a symbol for a specific commodity.",
+  `Get commodity prices (gold, silver, oil, natural gas, etc.). No arguments returns all; pass a slug for one commodity.
+
+WHEN TO USE: For commodity market data. Covers precious metals, energy, and industrial commodities.
+RETURNS: Price, change, change percent, and unit per commodity.
+COST: 2 credits.
+EXAMPLE: { "symbol": "gold" }`,
   {
     symbol: z.string().optional().describe("Commodity slug (e.g. gold, silver, crude, natural_gas, copper, platinum). Omit for all."),
   },
@@ -1260,7 +1397,12 @@ server.tool(
 // 29. veroq_crypto
 server.tool(
   "veroq_crypto",
-  "Get cryptocurrency data. With no arguments returns market overview (total market cap, BTC dominance, 24h volume). Pass a symbol (e.g. BTC, ETH, SOL) for detailed token data including price, market cap, supply, and 24h stats.",
+  `Get cryptocurrency data. No arguments returns market overview; pass a symbol for detailed token data.
+
+WHEN TO USE: For crypto market cap overview or individual token data (price, supply, ATH). Use veroq_crypto_chart for price history.
+RETURNS: Overview: total market cap, BTC dominance, 24h volume. Token: price, 24h/7d change, market cap, supply, ATH.
+COST: 2 credits.
+EXAMPLE: { "symbol": "ETH" }`,
   {
     symbol: z.string().optional().describe("Crypto symbol (e.g. BTC, ETH, SOL, ADA). Omit for market overview."),
   },
@@ -1317,7 +1459,13 @@ server.tool(
 // 30. veroq_crypto_chart
 server.tool(
   "veroq_crypto_chart",
-  "Get a crypto token price chart with historical data points. Returns timestamped price data for charting or trend analysis.",
+  `Get historical price chart data for a crypto token — timestamped prices for trend analysis.
+
+WHEN TO USE: For crypto price history and charting. Use veroq_crypto for current snapshot, this for historical trend.
+RETURNS: Sampled price history with timestamp, price, volume, and market cap per data point. Includes period change %.
+COST: 2 credits.
+EXAMPLE: { "symbol": "BTC", "days": 90 }
+CONSTRAINTS: Max 365 days of history.`,
   {
     symbol: z.string().describe("Crypto symbol (e.g. BTC, ETH, SOL)"),
     days: z.number().optional().describe("Number of days of history (default 30, max 365)"),
@@ -1364,7 +1512,12 @@ server.tool(
 // 31. veroq_defi
 server.tool(
   "veroq_defi",
-  "Get DeFi (Decentralized Finance) data. With no arguments returns TVL overview with top protocols and chain breakdown. Pass a protocol slug (e.g. aave, uniswap, lido) for detailed protocol TVL and history.",
+  `Get DeFi data. No arguments returns TVL overview with top protocols and chain breakdown; pass a slug for one protocol.
+
+WHEN TO USE: For DeFi TVL data across protocols and chains. Use veroq_defi_protocol for a single protocol deep dive.
+RETURNS: Overview: total TVL, top protocols, chain TVL. Protocol: TVL, 1d/7d/30d changes, category, chains.
+COST: 2 credits.
+EXAMPLE: { "protocol": "aave" }`,
   {
     protocol: z.string().optional().describe("Protocol slug (e.g. aave, uniswap, lido, makerdao). Omit for DeFi overview."),
   },
@@ -1426,7 +1579,12 @@ server.tool(
 // 32. veroq_screener
 server.tool(
   "veroq_screener",
-  "Find stocks or crypto matching multiple criteria. Combine technical indicators (RSI, MACD, SMA), sentiment analysis, and fundamental filters in one query.",
+  `Screen stocks or crypto by combining technical indicators, sentiment, and fundamental filters.
+
+WHEN TO USE: To find assets matching specific criteria (e.g. oversold tech stocks, high-volume bearish crypto). Use veroq_screener_presets for pre-built strategies.
+RETURNS: Matching assets with symbol, price, change%, RSI, MACD signal, sentiment, and volume.
+COST: 5 credits.
+EXAMPLE: { "sector": "Technology", "rsi_below": 30, "sentiment": "bearish", "limit": 10 }`,
   {
     asset_type: z.string().optional().describe("Asset type to screen (e.g. stock, crypto)"),
     sector: z.string().optional().describe("Sector filter (e.g. Technology, Healthcare, Energy)"),
@@ -1491,7 +1649,12 @@ server.tool(
 // 33. veroq_screener_presets
 server.tool(
   "veroq_screener_presets",
-  "List pre-built screening strategies or run a specific preset by ID.",
+  `List pre-built screening strategies or run a specific preset by ID.
+
+WHEN TO USE: For quick screening without building filters manually. Omit preset_id to list all 12 presets; pass one to run it.
+RETURNS: List mode: preset names, descriptions, and filters. Run mode: matching assets with price, RSI, sentiment, volume.
+COST: 1 credit.
+EXAMPLE: { "preset_id": "oversold_tech" }`,
   {
     preset_id: z.string().optional().describe("Preset ID to run. Omit to list all available presets."),
   },
@@ -1553,7 +1716,13 @@ server.tool(
 // 34. veroq_alerts
 server.tool(
   "veroq_alerts",
-  "Create, list, or check triggered price/sentiment alerts.",
+  `Create, list, or check triggered price/sentiment alerts.
+
+WHEN TO USE: To set up automated monitoring. Actions: "create" a new alert, "list" existing alerts, or view "triggered" alerts.
+RETURNS: Create: alert ID and details. List: all alerts with status. Triggered: fired alerts with current values.
+COST: 3 credits.
+EXAMPLE: { "action": "create", "ticker": "AAPL", "alert_type": "price_below", "threshold": 150 }
+CONSTRAINTS: 6 alert types: price_above, price_below, rsi_above, rsi_below, sentiment_flip, volume_spike.`,
   {
     action: z.string().describe('Action to perform: "create", "list", or "triggered"'),
     ticker: z.string().optional().describe("Ticker symbol (required for create)"),
@@ -1623,7 +1792,12 @@ server.tool(
 // 35. veroq_social_sentiment
 server.tool(
   "veroq_social_sentiment",
-  "Get social media sentiment for a stock or crypto ticker. Returns Reddit and other platform mentions, sentiment scores, and trending discussion topics.",
+  `Get social media sentiment for a stock or crypto ticker from Reddit, Twitter/X, and other platforms.
+
+WHEN TO USE: To gauge retail investor sentiment and social buzz around a specific ticker.
+RETURNS: Overall sentiment score, mention count, per-platform breakdown, trending topics, and top posts with URLs.
+COST: 2 credits.
+EXAMPLE: { "symbol": "TSLA" }`,
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, TSLA, BTC)"),
   },
@@ -1671,7 +1845,12 @@ server.tool(
 // 36. veroq_social_trending
 server.tool(
   "veroq_social_trending",
-  "Get tickers and topics currently trending on social media. Shows the most discussed stocks and crypto across Reddit, Twitter, and other platforms.",
+  `Get tickers and topics currently trending on social media across Reddit, Twitter/X, and other platforms.
+
+WHEN TO USE: To discover what retail investors are buzzing about right now. No parameters needed.
+RETURNS: Trending symbols with name, mention count, sentiment score, and 1-hour change in mentions.
+COST: 2 credits.
+EXAMPLE: {}`,
   {},
   async () => {
     const data = (await api("GET", "/api/v1/social/trending")) as {
@@ -1705,7 +1884,13 @@ server.tool(
 // 37. veroq_ipo_calendar
 server.tool(
   "veroq_ipo_calendar",
-  "Get upcoming and recent IPOs from SEC EDGAR S-1 filings. Shows company name, ticker, filing date, and location.",
+  `Get upcoming and recent IPOs from SEC EDGAR S-1 filings.
+
+WHEN TO USE: To track the IPO pipeline and recent public offerings.
+RETURNS: IPO filings with company name, ticker (if assigned), filing date, form type, and location.
+COST: 2 credits.
+EXAMPLE: { "days": 30, "limit": 20 }
+CONSTRAINTS: Max 90 days lookback, max 100 results.`,
   {
     days: z.number().optional().describe("Lookback/forward window in days (default 30, max 90)"),
     limit: z.number().optional().describe("Max results (default 30, max 100)"),
@@ -1748,7 +1933,12 @@ server.tool(
 // 38. veroq_ticker_news
 server.tool(
   "veroq_ticker_news",
-  "Get recent news headlines and briefs for a specific stock or crypto ticker. Returns the latest intelligence coverage mentioning this ticker.",
+  `Get recent news headlines and briefs for a specific stock or crypto ticker.
+
+WHEN TO USE: For ticker-specific news. Use veroq_search for topic-based search, or veroq_feed for general news.
+RETURNS: Array of briefs with headline, confidence, category, and summary. Includes total brief count.
+COST: 1 credit.
+EXAMPLE: { "symbol": "AAPL", "limit": 5 }`,
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, BTC)"),
     limit: z.number().optional().describe("Max results (default 10)"),
@@ -1777,7 +1967,12 @@ server.tool(
 // 39. veroq_ticker_analysis
 server.tool(
   "veroq_ticker_analysis",
-  "Get a comprehensive analysis for a stock or crypto ticker combining news sentiment, technical indicators, recent events, and an overall outlook.",
+  `Get a comprehensive analysis for a ticker combining news sentiment, technicals, events, and overall outlook.
+
+WHEN TO USE: For a detailed single-ticker analysis with outlook, catalysts, and risks. Use veroq_full for raw data, this for interpreted analysis.
+RETURNS: Outlook (bullish/bearish/neutral), summary, sentiment score, key factors, catalysts, risks, technicals, and recent coverage.
+COST: 2 credits.
+EXAMPLE: { "symbol": "NVDA" }`,
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
@@ -1835,7 +2030,13 @@ server.tool(
 // 40. veroq_search_suggest
 server.tool(
   "veroq_search_suggest",
-  "Get search autocomplete suggestions. Returns matching headlines and entities as you type — useful for finding the right query before a full search.",
+  `Get search autocomplete suggestions — matching headlines and entities for a partial query.
+
+WHEN TO USE: To find the right search terms before running veroq_search. Helps discover entities and headlines.
+RETURNS: Headline suggestions (with category and brief ID) and entity suggestions (with type and mention count).
+COST: 1 credit.
+EXAMPLE: { "query": "fed rate" }
+CONSTRAINTS: Minimum 2 characters.`,
   {
     query: z.string().describe("Partial search query (minimum 2 characters)"),
   },
@@ -1877,7 +2078,12 @@ server.tool(
 // 41. veroq_defi_protocol
 server.tool(
   "veroq_defi_protocol",
-  "Get detailed DeFi protocol data including TVL, chain deployment, and recent performance changes. Use protocol slugs like aave, uniswap, lido, makerdao.",
+  `Get detailed DeFi protocol data including TVL, chain deployment, and performance changes.
+
+WHEN TO USE: For a deep dive into a single DeFi protocol. Use veroq_defi (no args) for the full DeFi market overview.
+RETURNS: Protocol TVL, 1d/7d/30d change percentages, category, and deployed chains.
+COST: 2 credits.
+EXAMPLE: { "protocol": "uniswap" }`,
   {
     protocol: z.string().describe("Protocol slug (e.g. aave, uniswap, lido, makerdao, curve)"),
   },
@@ -1910,7 +2116,13 @@ server.tool(
 // 42. veroq_economy_indicator
 server.tool(
   "veroq_economy_indicator",
-  "Get a specific economic indicator from FRED (Federal Reserve) with historical observations. Use indicator slugs like gdp, cpi, unemployment, fed_funds, retail_sales.",
+  `Get a specific FRED economic indicator with historical observations.
+
+WHEN TO USE: For detailed history of one indicator. Use veroq_economy (no args) for a summary of all indicators.
+RETURNS: Series info (ID, frequency, units), latest value, and historical observations array.
+COST: 2 credits.
+EXAMPLE: { "indicator": "fed_funds", "limit": 24 }
+CONSTRAINTS: Max 100 observations.`,
   {
     indicator: z.string().describe("Indicator slug (e.g. gdp, cpi, unemployment, fed_funds, retail_sales, housing_starts)"),
     limit: z.number().optional().describe("Number of historical observations to return (default 30, max 100)"),
@@ -1949,7 +2161,12 @@ server.tool(
 // 43. veroq_generate_report
 server.tool(
   "veroq_generate_report",
-  "Generate an AI-powered research report for a ticker symbol. Returns a comprehensive analysis including fundamentals, technicals, and news sentiment.",
+  `Generate an AI-powered research report for a ticker. Kicks off async generation — use veroq_get_report to retrieve the result.
+
+WHEN TO USE: For a polished, shareable research report. Use veroq_ticker_analysis for instant inline analysis instead.
+RETURNS: Report ID, ticker, tier, and status message. Use the report_id with veroq_get_report to fetch the full report.
+COST: 5 credits (quick tier). Deep tier requires a paid plan.
+EXAMPLE: { "ticker": "AAPL", "tier": "quick" }`,
   {
     ticker: z.string().describe("Ticker symbol to generate a report for (e.g. AAPL, BTC)"),
     tier: z.string().optional().describe("Report tier — 'quick' for a fast summary or 'deep' for full analysis (default 'quick')"),
@@ -1979,7 +2196,12 @@ server.tool(
 // 44. veroq_get_report
 server.tool(
   "veroq_get_report",
-  "Retrieve a previously generated report by its ID. Returns the full report content including all analysis sections.",
+  `Retrieve a previously generated report by its ID.
+
+WHEN TO USE: After calling veroq_generate_report, use this to fetch the completed report content.
+RETURNS: Full report with title, ticker, tier, creation date, and markdown content (or structured sections).
+COST: 1 credit.
+EXAMPLE: { "report_id": "rpt_abc123" }`,
   {
     report_id: z.string().describe("The report ID to retrieve"),
   },
@@ -2018,7 +2240,12 @@ server.tool(
 // 46. veroq_full
 server.tool(
   "veroq_full",
-  "Get the full profile for a stock or crypto ticker — price, fundamentals, technicals, news sentiment, and recent coverage all in one call.",
+  `Get the full profile for a ticker — price, fundamentals, technicals, sentiment, and recent news in one call.
+
+WHEN TO USE: For a complete data dump on a single ticker. 9 sources in parallel. Use veroq_ticker_analysis for an interpreted analysis instead.
+RETURNS: Price data, fundamentals, technical indicators, sentiment scores, and recent news briefs.
+COST: 2 credits.
+EXAMPLE: { "ticker": "NVDA" }`,
   {
     ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, BTC)"),
   },
@@ -2066,7 +2293,12 @@ server.tool(
 // 47. veroq_insider
 server.tool(
   "veroq_insider",
-  "Get insider trading activity for a stock — recent buys and sells by company executives and directors from SEC filings.",
+  `Get insider trading activity for a stock — executive and director buys/sells from SEC Form 4 filings.
+
+WHEN TO USE: To check if insiders are buying or selling a stock. Key signal for institutional-grade analysis.
+RETURNS: Transaction list with insider name, title, type (buy/sell), shares, price, value, and date. Plus summary stats.
+COST: 2 credits.
+EXAMPLE: { "ticker": "AAPL" }`,
   {
     ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
@@ -2115,7 +2347,12 @@ server.tool(
 // 48. veroq_filings
 server.tool(
   "veroq_filings",
-  "Get recent SEC filings for a stock — 10-K, 10-Q, 8-K, and other regulatory filings with links to source documents.",
+  `Get recent SEC filings for a stock — 10-K, 10-Q, 8-K, and other regulatory filings with source links.
+
+WHEN TO USE: For regulatory filing history and due diligence. Links directly to SEC EDGAR source documents.
+RETURNS: Filing list with form type, title, filing date, reporting period, and URL.
+COST: 2 credits.
+EXAMPLE: { "ticker": "TSLA" }`,
   {
     ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
@@ -2159,7 +2396,12 @@ server.tool(
 // 49. veroq_analysts
 server.tool(
   "veroq_analysts",
-  "Get Wall Street analyst ratings and price targets for a stock — consensus rating, target prices, and individual analyst recommendations.",
+  `Get Wall Street analyst ratings and price targets for a stock.
+
+WHEN TO USE: To see consensus analyst opinion and price target range for a stock.
+RETURNS: Consensus rating, mean/high/low price targets, analyst count, and individual ratings with firm, target, and date.
+COST: 2 credits.
+EXAMPLE: { "ticker": "NVDA" }`,
   {
     ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
@@ -2207,7 +2449,12 @@ server.tool(
 // 50. veroq_congress
 server.tool(
   "veroq_congress",
-  "Get recent stock trades by members of U.S. Congress. Optionally filter by ticker symbol to see congressional activity on a specific stock.",
+  `Get recent stock trades by members of U.S. Congress from public disclosure filings.
+
+WHEN TO USE: To track congressional trading activity — politically-informed trading signals. Filter by ticker for specific stocks.
+RETURNS: Trades with member name, party, state, chamber, ticker, transaction type, amount range, and date.
+COST: 2 credits.
+EXAMPLE: { "symbol": "NVDA" }`,
   {
     symbol: z.string().optional().describe("Ticker symbol to filter by (e.g. AAPL, NVDA). Omit for all recent congressional trades."),
   },
@@ -2251,7 +2498,12 @@ server.tool(
 // 51. veroq_institutions
 server.tool(
   "veroq_institutions",
-  "Get institutional ownership data for a stock — top holders, ownership changes, and institutional buy/sell activity from 13F filings.",
+  `Get institutional ownership data for a stock — top holders and ownership changes from 13F filings.
+
+WHEN TO USE: To see which institutions own a stock and whether they're increasing or decreasing positions.
+RETURNS: Total institutional ownership %, summary stats, and top holders with shares, value, percent held, change, and filing date.
+COST: 2 credits.
+EXAMPLE: { "ticker": "AAPL" }`,
   {
     ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
@@ -2302,7 +2554,12 @@ server.tool(
 // 52. veroq_run_agent
 server.tool(
   "veroq_run_agent",
-  "Run a VEROQ AI agent by its slug. Agents are pre-built workflows that combine multiple data sources and analysis steps to accomplish complex tasks like portfolio reviews, due diligence, or market scans.",
+  `Run a VEROQ AI agent by its slug — pre-built workflows combining multiple data sources and analysis steps.
+
+WHEN TO USE: For complex multi-step analysis tasks like portfolio reviews, due diligence, or market scans. Agents automate what would take many individual tool calls.
+RETURNS: Agent name, execution steps (with status/summary per step), final output or structured result, and credits used.
+COST: 5-100 credits (varies by agent complexity).
+EXAMPLE: { "slug": "due-diligence", "inputs": { "ticker": "AAPL" } }`,
   {
     slug: z.string().describe("Agent slug identifier (e.g. 'portfolio-review', 'due-diligence', 'market-scanner')"),
     inputs: z.record(z.unknown()).describe("Input parameters for the agent — varies by agent type (e.g. { ticker: 'AAPL' } or { tickers: ['AAPL', 'GOOGL'] })"),
