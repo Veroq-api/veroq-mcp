@@ -1,0 +1,18 @@
+export {
+  checkPermissions,
+  checkOutputSafety,
+  setPermissionContext,
+  getPermissionContext,
+  resetPermissionContext,
+  getAuditLog,
+  clearAuditLog,
+  configureEnterprise,
+  isHighStakesOutput,
+  type ToolPermissionContext,
+  type PermissionMode,
+  type PermissionDecision,
+  type PermissionRule,
+  type PermissionResult,
+  type AuditEntry,
+  type EnterpriseConfig,
+} from "./veroq-permission-engine.js";
