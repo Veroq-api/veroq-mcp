@@ -94,6 +94,93 @@ const EXTERNAL_PREFIX = "external_";
 const DEFAULT_RATE_LIMIT = 60;
 const DEFAULT_CREDITS_PER_CALL = 1;
 
+// ── Trust-Level Defaults ──
+
+/** Tool name patterns that are dangerous in finance context */
+const FINANCE_DANGEROUS_PATTERNS = [
+  "*trade*", "*execute*", "*order*", "*buy*", "*sell*",
+  "*transfer*", "*withdraw*", "*margin*", "*liquidat*",
+];
+
+/** Conservative defaults per trust level */
+const TRUST_DEFAULTS: Record<TrustLevel, {
+  rateLimitPerMinute: number;
+  creditsPerCall: number;
+  cacheEnabled: boolean;
+  cacheTtlMs: number;
+  reviewPatterns: string[];
+  denyPatterns: string[];
+}> = {
+  "read-only": {
+    rateLimitPerMinute: 60,
+    creditsPerCall: 1,
+    cacheEnabled: true,
+    cacheTtlMs: 60_000,
+    reviewPatterns: [],
+    denyPatterns: [],
+  },
+  "write": {
+    rateLimitPerMinute: 20,
+    creditsPerCall: 3,
+    cacheEnabled: false,
+    cacheTtlMs: 0,
+    reviewPatterns: FINANCE_DANGEROUS_PATTERNS,
+    denyPatterns: [],
+  },
+  "high-risk": {
+    rateLimitPerMinute: 5,
+    creditsPerCall: 5,
+    cacheEnabled: false,
+    cacheTtlMs: 0,
+    reviewPatterns: [],
+    denyPatterns: FINANCE_DANGEROUS_PATTERNS,
+  },
+};
+
+/**
+ * Apply conservative defaults to an external server config based on trust level.
+ * Does NOT overwrite values the caller explicitly set.
+ *
+ * @example
+ * ```typescript
+ * const config = applyExternalDefaults({
+ *   serverId: "broker",
+ *   name: "Broker API",
+ *   serverUrl: "https://api.broker.com",
+ *   auth: { type: "bearer", credential: "..." },
+ *   allowedTools: ["get_positions", "submit_order"],
+ *   trustLevel: "write",
+ * });
+ * // config now has: rateLimitPerMinute: 20, creditsPerCall: 3,
+ * // permissionRules.review includes *order*, *trade*, *buy*, *sell*
+ * ```
+ */
+export function applyExternalDefaults(config: ExternalServerConfig): ExternalServerConfig {
+  const defaults = TRUST_DEFAULTS[config.trustLevel] || TRUST_DEFAULTS["read-only"];
+  const prefix = `external_${config.serverId}_`;
+
+  // Build prefixed review/deny patterns from trust defaults
+  const defaultReview = defaults.reviewPatterns.map(p => `${prefix}${p}`);
+  const defaultDeny = defaults.denyPatterns.map(p => `${prefix}${p}`);
+
+  // Merge with any explicit rules (explicit rules take precedence)
+  const existingReview = (config.permissionRules?.review || []);
+  const existingDeny = (config.permissionRules?.denied || []);
+
+  return {
+    ...config,
+    rateLimitPerMinute: config.rateLimitPerMinute ?? defaults.rateLimitPerMinute,
+    creditsPerCall: config.creditsPerCall ?? defaults.creditsPerCall,
+    cachePolicy: config.cachePolicy ?? (defaults.cacheEnabled
+      ? { enabled: true, ttlMs: defaults.cacheTtlMs }
+      : undefined),
+    permissionRules: {
+      review: [...new Set([...existingReview, ...defaultReview])],
+      denied: [...new Set([...existingDeny, ...defaultDeny])],
+    },
+  };
+}
+
 // ── Rate Limiter ──
 
 interface RateLimitBucket {
@@ -233,7 +320,7 @@ export class ExternalMcpRegistry {
 
   // ── Registration ──
 
-  /** Register an external MCP server */
+  /** Register an external MCP server. Applies conservative defaults based on trustLevel. */
   registerServer(config: ExternalServerConfig): void {
     if (!config.serverId || !config.serverUrl) {
       throw new Error("serverId and serverUrl are required");
@@ -241,7 +328,8 @@ export class ExternalMcpRegistry {
     if (config.allowedTools.length === 0) {
       throw new Error("At least one allowed tool is required (least-privilege)");
     }
-    this.servers.set(config.serverId, config);
+    const enriched = applyExternalDefaults(config);
+    this.servers.set(config.serverId, enriched);
     this.metrics.set(config.serverId, { totalCalls: 0, errors: 0, totalLatencyMs: 0 });
   }
 

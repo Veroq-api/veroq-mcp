@@ -103,6 +103,7 @@ export {
   registerExternalMcpServer,
   callExternalTool,
   resetExternalRegistry,
+  applyExternalDefaults,
   type ExternalServerConfig,
   type ExternalAuthConfig,
   type ExternalAuthType,

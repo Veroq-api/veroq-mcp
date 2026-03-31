@@ -220,7 +220,7 @@ describe("external-mcp", () => {
     };
 
     const registry = new ExternalMcpRegistry(countingCallFn);
-    registry.registerServer(makeServer()); // No cache policy
+    registry.registerServer(makeServer({ cachePolicy: { enabled: false, ttlMs: 0 } }));
 
     await registry.callTool("test-provider", "get_quote", {});
     await registry.callTool("test-provider", "get_quote", {});
@@ -346,5 +346,101 @@ describe("external-mcp", () => {
 
     const registry = getExternalRegistry();
     assert.ok(registry.getServer("runtime-provider"));
+  });
+
+  // ── Trust-Level Defaults ──
+
+  it("read-only server gets permissive defaults", async () => {
+    const { applyExternalDefaults } = await import("../src/external/index.js");
+    const config = applyExternalDefaults(makeServer({ trustLevel: "read-only" }));
+
+    assert.equal(config.rateLimitPerMinute, 10); // explicit value kept (not overwritten)
+    assert.equal(config.creditsPerCall, 2); // explicit value kept
+    assert.ok(config.cachePolicy?.enabled); // default applied
+    assert.equal(config.permissionRules?.review?.length, 0); // no review patterns for read-only
+    assert.equal(config.permissionRules?.denied?.length, 0); // no deny patterns for read-only
+  });
+
+  it("write server gets stricter defaults with review patterns", async () => {
+    const { applyExternalDefaults } = await import("../src/external/index.js");
+    const config = applyExternalDefaults(makeServer({
+      trustLevel: "write",
+      rateLimitPerMinute: undefined,
+      creditsPerCall: undefined,
+      cachePolicy: undefined,
+    }));
+
+    assert.equal(config.rateLimitPerMinute, 20);
+    assert.equal(config.creditsPerCall, 3);
+    assert.equal(config.cachePolicy, undefined); // write = no cache
+    // Should have finance-dangerous patterns in review
+    const reviewPatterns = config.permissionRules?.review || [];
+    assert.ok(reviewPatterns.length > 0, "Write server should have review patterns");
+    assert.ok(reviewPatterns.some(p => p.includes("trade")), "Should review *trade* tools");
+    assert.ok(reviewPatterns.some(p => p.includes("order")), "Should review *order* tools");
+    assert.ok(reviewPatterns.some(p => p.includes("buy")), "Should review *buy* tools");
+  });
+
+  it("high-risk server gets strictest defaults with deny patterns", async () => {
+    const { applyExternalDefaults } = await import("../src/external/index.js");
+    const config = applyExternalDefaults(makeServer({
+      trustLevel: "high-risk",
+      rateLimitPerMinute: undefined,
+      creditsPerCall: undefined,
+    }));
+
+    assert.equal(config.rateLimitPerMinute, 5); // strict rate limit
+    assert.equal(config.creditsPerCall, 5); // expensive
+    const denyPatterns = config.permissionRules?.denied || [];
+    assert.ok(denyPatterns.length > 0, "High-risk should have deny patterns");
+    assert.ok(denyPatterns.some(p => p.includes("execute")), "Should deny *execute* tools");
+    assert.ok(denyPatterns.some(p => p.includes("sell")), "Should deny *sell* tools");
+  });
+
+  it("explicit config values are preserved over defaults", async () => {
+    const { applyExternalDefaults } = await import("../src/external/index.js");
+    const config = applyExternalDefaults(makeServer({
+      trustLevel: "write",
+      rateLimitPerMinute: 100, // explicit override
+      creditsPerCall: 1, // explicit override
+      cachePolicy: { enabled: true, ttlMs: 30_000 }, // explicit override
+    }));
+
+    assert.equal(config.rateLimitPerMinute, 100); // kept
+    assert.equal(config.creditsPerCall, 1); // kept
+    assert.equal(config.cachePolicy?.enabled, true); // kept
+    assert.equal(config.cachePolicy?.ttlMs, 30_000); // kept
+  });
+
+  it("registration auto-applies defaults", () => {
+    const registry = new ExternalMcpRegistry(mockCallFn);
+    registry.registerServer(makeServer({
+      serverId: "write-broker",
+      trustLevel: "write",
+      rateLimitPerMinute: undefined,
+      creditsPerCall: undefined,
+      cachePolicy: undefined,
+    }));
+
+    const server = registry.getServer("write-broker");
+    assert.ok(server);
+    assert.equal(server!.rateLimitPerMinute, 20); // default applied
+    assert.equal(server!.creditsPerCall, 3); // default applied
+    // Permission rules applied
+    const review = server!.permissionRules?.review || [];
+    assert.ok(review.length > 0, "Registration should apply default review patterns");
+  });
+
+  it("defaults include prefixed patterns for the specific server", async () => {
+    const { applyExternalDefaults } = await import("../src/external/index.js");
+    const config = applyExternalDefaults(makeServer({
+      serverId: "my-broker",
+      trustLevel: "high-risk",
+    }));
+
+    const denyPatterns = config.permissionRules?.denied || [];
+    // Patterns should be prefixed with external_my-broker_
+    assert.ok(denyPatterns.some(p => p.startsWith("external_my-broker_")),
+      "Deny patterns should be server-prefixed");
   });
 });

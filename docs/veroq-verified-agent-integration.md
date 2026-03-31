@@ -661,13 +661,47 @@ const result = await client.callExternalTool("alphavantage", "get_quote", { symb
 result = client.call_external_tool("alphavantage", "get_quote", {"symbol": "NVDA"})
 ```
 
-#### Finance Vertical Safe Defaults
+#### Automatic Trust-Level Defaults (`applyExternalDefaults`)
 
-The finance vertical allows read-only market data providers by default:
-- Read-only tools: allowed (get_quote, get_history, get_fundamentals)
-- Write tools: require review (submit_order, cancel_order)
-- High-risk tools: always escalate (execute_trade, margin_call)
-- Trading execution: denied by default
+Every external server registration automatically applies conservative defaults based on `trustLevel`. Explicit config values are never overwritten.
+
+| Setting | read-only | write | high-risk |
+|---------|-----------|-------|-----------|
+| Rate limit | 60/min | 20/min | 5/min |
+| Credits/call | 1 | 3 | 5 |
+| Caching | enabled (60s) | disabled | disabled |
+| Dangerous tool patterns | allowed | **review** | **denied** |
+
+Dangerous patterns (auto-applied in finance context): `*trade*`, `*execute*`, `*order*`, `*buy*`, `*sell*`, `*transfer*`, `*withdraw*`, `*margin*`, `*liquidat*`.
+
+**Read-only market data provider:**
+```typescript
+registerExternalMcpServer({
+  serverId: "alphavantage",
+  name: "Alpha Vantage",
+  serverUrl: "https://api.alphavantage.co",
+  auth: { type: "api-key", credential: process.env.AV_KEY },
+  allowedTools: ["get_quote", "get_history"],
+  trustLevel: "read-only",
+  // Defaults applied: 60/min rate limit, 1cr, caching enabled, no restrictions
+});
+```
+
+**High-risk execution broker:**
+```typescript
+registerExternalMcpServer({
+  serverId: "broker",
+  name: "Trading Broker",
+  serverUrl: "https://api.broker.com",
+  auth: { type: "bearer", credential: shortLivedToken },
+  allowedTools: ["get_positions", "submit_order", "cancel_order"],
+  trustLevel: "high-risk",
+  // Defaults applied: 5/min rate limit, 5cr, no cache,
+  // *order*, *trade*, *buy*, *sell* DENIED by default
+});
+```
+
+Use `applyExternalDefaults(config)` directly to preview what defaults will be applied before registration.
 
 #### How It Reuses the Full Stack
 
