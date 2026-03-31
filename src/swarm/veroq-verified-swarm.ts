@@ -600,10 +600,27 @@ export class VerifiedSwarm {
     const plan = buildExecutionPlan(this.agents, this.config.enableParallelSteps);
 
     for (const group of plan) {
+      // For parallel groups, pre-check budget for the whole group to prevent TOCTOU races.
+      // If the group can't fully afford, filter to those that fit sequentially.
+      let affordableAgents = group;
+      if (group.length > 1) {
+        affordableAgents = [];
+        for (const agent of group) {
+          const est = estimateStepCredits(agent.role, this.config.costMode);
+          if (budget.canAfford(est.estimatedCredits)) {
+            budget.recordSpend(est.estimatedCredits); // pre-reserve
+            affordableAgents.push(agent);
+          } else {
+            budget.recordSkip();
+          }
+        }
+        if (affordableAgents.length === 0) continue;
+      }
+
       // Run agents in this group (parallel if >1, sequential otherwise)
-      const groupResults = await (group.length > 1
-        ? Promise.all(group.map(agent => this.executeAgent(agent, query, steps, budget)))
-        : Promise.all([this.executeAgent(group[0], query, steps, budget)])
+      const groupResults = await (affordableAgents.length > 1
+        ? Promise.all(affordableAgents.map(agent => this.executeAgent(agent, query, steps, budget, true)))
+        : Promise.all([this.executeAgent(affordableAgents[0], query, steps, budget, false)])
       );
 
       for (const result of groupResults) {
@@ -687,12 +704,14 @@ export class VerifiedSwarm {
     return context;
   }
 
-  /** Execute a single agent with cost routing, caching, and budget enforcement */
+  /** Execute a single agent with cost routing, caching, and budget enforcement.
+   *  @param preReserved - if true, budget was already reserved by the parallel group handler */
   private async executeAgent(
     agent: SwarmAgent,
     query: string,
     steps: SwarmStepResult[],
     budget: BudgetTracker,
+    preReserved: boolean = false,
   ): Promise<{ step: SwarmStepResult; cost: StepCostRecord } | null> {
     const stepStart = Date.now();
     const toolName = agent.tool || `swarm_${agent.role}`;
@@ -700,8 +719,8 @@ export class VerifiedSwarm {
     // Cost estimate
     const costEst = estimateStepCredits(agent.role, this.config.costMode);
 
-    // Budget check
-    if (!budget.canAfford(costEst.estimatedCredits)) {
+    // Budget check (skip if already pre-reserved by parallel group handler)
+    if (!preReserved && !budget.canAfford(costEst.estimatedCredits)) {
       budget.recordSkip();
       return null;
     }
@@ -789,7 +808,10 @@ export class VerifiedSwarm {
 
     // Apply cost-routed credits (override the raw creditsUsed with tier-based cost)
     const actualCredits = output.creditsUsed ?? costEst.estimatedCredits;
-    budget.recordSpend(actualCredits);
+    // Only record spend if not pre-reserved by the parallel group handler
+    if (!preReserved) {
+      budget.recordSpend(actualCredits);
+    }
 
     // Cache the result for future runs
     if (!["critic", "synthesizer", "verifier"].includes(agent.role)) {

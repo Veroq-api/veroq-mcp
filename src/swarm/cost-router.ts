@@ -245,8 +245,8 @@ export class StepCache {
 
 // ── Parallel Execution ──
 
-/** Roles that MUST run sequentially (depend on prior step outputs) */
-const SEQUENTIAL_ROLES = new Set<string>(["verifier", "critic", "synthesizer"]);
+/** Roles that MUST run sequentially (depend on prior step outputs or set context for others) */
+const SEQUENTIAL_ROLES = new Set<string>(["planner", "verifier", "critic", "synthesizer"]);
 
 /**
  * Identify groups of steps that can run in parallel.

@@ -201,11 +201,12 @@ describe("cost-router", () => {
     ];
     const plan = buildExecutionPlan(agents, true);
 
-    // planner+researcher+risk_assessor = parallel group, verifier = seq, critic = seq, synthesizer = seq
-    assert.equal(plan[0].length, 3); // planner, R1, R2 parallel
-    assert.equal(plan[1].length, 1); // verifier sequential
-    assert.equal(plan[2].length, 1); // critic sequential
-    assert.equal(plan[3].length, 1); // synthesizer sequential
+    // planner = sequential, researcher+risk_assessor = parallel, verifier/critic/synthesizer = sequential
+    assert.equal(plan[0].length, 1); // planner sequential (sets context)
+    assert.equal(plan[1].length, 2); // R1 + R2 parallel
+    assert.equal(plan[2].length, 1); // verifier sequential
+    assert.equal(plan[3].length, 1); // critic sequential
+    assert.equal(plan[4].length, 1); // synthesizer sequential
   });
 
   // ── Swarm Integration ──
@@ -246,17 +247,20 @@ describe("cost-router", () => {
     const cheap = createVerifiedSwarm({
       roles: ["planner", "researcher", "verifier", "synthesizer"],
       costMode: "cheap",
+      apiFn: mockApi as any,
     });
     const premium = createVerifiedSwarm({
       roles: ["planner", "researcher", "verifier", "synthesizer"],
       costMode: "premium",
+      apiFn: mockApi as any,
     });
 
     const cheapResult = await cheap.run("Test cost");
     const premResult = await premium.run("Test cost");
 
-    // Cheap pipeline estimate: 1+1+1+1=4, Premium: 3+5+5+3=16
-    assert.ok(cheapResult.totalCreditsUsed <= premResult.totalCreditsUsed);
+    // Cheap: 1+1+1+1=4cr, Premium: 3+5+5+3=16cr (API returns creditsUsed:3 which overrides)
+    assert.ok(cheapResult.totalCreditsUsed <= premResult.totalCreditsUsed,
+      `Cheap (${cheapResult.totalCreditsUsed}) should be <= Premium (${premResult.totalCreditsUsed})`);
   });
 
   it("swarm cache hits on repeated query", async () => {
