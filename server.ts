@@ -124,47 +124,79 @@ function text(t: string) {
 
 // --- Server ---
 
-function createMcpServer(): McpServer {
-  return new McpServer({ name: "veroq", version: "1.1.0" });
-}
-
-const server = createMcpServer();
+const server = new McpServer({
+  name: "veroq",
+  version: "1.0.0",
+});
 
 // ── Hero Tools — Ask & Verify ──
 
 // 1. veroq_ask
 server.tool(
   "veroq_ask",
-  "Ask VEROQ any natural-language question. This is the single most important tool — it routes your question to the best combination of data, analysis, and intelligence to give a comprehensive answer.",
+  `The most important tool — ask any question in natural language and get verified intelligence.
+
+WHEN TO USE: This should be your DEFAULT tool for any financial, market, or economic question. It automatically detects 41 intents (price, technicals, earnings, sentiment, screener, backtest, competitors, insider, filings, analysts, congress, crypto, forex, economy, and more) and routes to the right data sources. Use this FIRST before reaching for specialized tools.
+
+RETURNS: Structured data from all matched endpoints + LLM-generated natural language summary + composite trade signal (0-100) + confidence level (high/medium/low) + follow-up suggestions.
+
+COST: 1-5 credits depending on endpoints hit. Responses cached 60s for ticker queries, 30s for general. Use fast=true to skip LLM summary and save ~2 seconds.
+
+EXAMPLES:
+  "What's happening with NVDA?" → full cross-reference (price, technicals, earnings, sentiment, news, insider, analysts)
+  "Compare AAPL vs MSFT" → side-by-side comparison with correlation
+  "Oversold semiconductor stocks" → NLP screener with results
+  "How is the market doing?" → indices, movers, yields
+  "Bitcoin price and DeFi overview" → crypto data
+  "Verify: Tesla beat Q4 earnings" → fact-check with evidence chain
+
+CONSTRAINTS: 1,061+ tickers with auto-discovery. Falls back to web search for non-financial queries.`,
   {
-    question: z.string().describe("Natural-language question to ask VEROQ (e.g. 'What is happening with NVIDIA?' or 'Compare Tesla and BYD')"),
+    question: z.string().describe("Natural-language question — be specific for best results (e.g. 'NVDA full analysis', 'oversold tech stocks', 'compare AAPL vs MSFT')"),
+    fast: z.boolean().optional().describe("Skip LLM summary for faster response (~500ms vs ~3s). Data still returned, just no prose summary."),
   },
   { readOnlyHint: true, openWorldHint: true },
-  async ({ question }) => {
+  async ({ question, fast }) => {
     const data = (await api("POST", "/api/v1/ask", undefined, {
       question,
-    })) as {
-      status?: string;
-      question?: string;
-      answer?: string;
-      sources?: { id?: string; headline?: string; type?: string }[];
-      follow_ups?: string[];
-      credits_used?: number;
-      [key: string]: unknown;
-    };
-    if (data.status === "error") return text("Failed to get an answer. Please try rephrasing your question.");
+      ...(fast ? { fast: true } : {}),
+    })) as Record<string, unknown>;
+
+    if (data.status === "error") return text(`Failed: ${data.message || "Please try rephrasing your question."}`);
+
     const parts: string[] = [];
-    if (data.answer) parts.push(data.answer);
-    if (data.sources?.length) {
-      parts.push("\n## Sources");
-      for (const s of data.sources) {
-        parts.push(`- ${s.headline || s.id}${s.type ? ` (${s.type})` : ""}${s.id ? ` [${s.id}]` : ""}`);
+
+    // Summary
+    const summary = data.summary as string;
+    if (summary) parts.push(summary);
+
+    // Trade signal
+    const ts = data.trade_signal as { action?: string; score?: number; factors?: string[] } | undefined;
+    if (ts?.action) {
+      parts.push(`\nTrade Signal: ${ts.action.toUpperCase()} (${ts.score}/100)`);
+      if (ts.factors?.length) {
+        for (const f of ts.factors.slice(0, 4)) parts.push(`  • ${f}`);
       }
     }
-    if (data.follow_ups?.length) {
-      parts.push("\n## Follow-up Questions");
-      parts.push(data.follow_ups.map((f) => `- ${f}`).join("\n"));
+
+    // Confidence
+    const conf = data.confidence as { level?: string; reason?: string } | undefined;
+    if (conf?.level) parts.push(`\nConfidence: ${conf.level} — ${conf.reason || ""}`);
+
+    // Follow-ups
+    const followUps = data.follow_ups as string[] | undefined;
+    if (followUps?.length) {
+      parts.push("\nFollow-up questions:");
+      for (const f of followUps.slice(0, 3)) parts.push(`  → ${f}`);
     }
+
+    // Credits + endpoints
+    const credits = data.credits_used as number | undefined;
+    const endpoints = data.endpoints_called as string[] | undefined;
+    if (credits || endpoints) {
+      parts.push(`\n_${credits || "?"} credits | ${endpoints?.length || "?"} endpoints | source: ${data.summary_source || "template"}_`);
+    }
+
     return text(parts.join("\n") || "No answer returned.");
   }
 );
@@ -172,43 +204,80 @@ server.tool(
 // 2. veroq_verify
 server.tool(
   "veroq_verify",
-  "Fact-check a claim against the VEROQ brief corpus. Returns a verdict (supported/contradicted/partially_supported/unverifiable) with confidence, sources, and nuances.",
+  `Fact-check any claim with full evidence chain, confidence breakdown, and source reliability scores.
+
+WHEN TO USE: After any agent (including yourself) makes a factual claim about earnings, revenue, market movements, mergers, acquisitions, or any financial data. Also use proactively to verify assumptions before making recommendations. This is the TRUST tool — it proves claims with evidence.
+
+RETURNS:
+  • verdict: supported | contradicted | partially_supported | unverifiable
+  • confidence: 0-1 with 4-factor breakdown (source_agreement, source_quality, recency, corroboration_depth)
+  • evidence_chain: array of {source, snippet, url, position, reliability} — actual quotes from real sources
+  • receipt: hashable verification proof (id, claim_hash, verdict_hash, sources_hash)
+  • Checks 200+ verified sources first, falls back to live web search — NOTHING returns "unverifiable" for newsworthy claims
+
+COST: 3 credits. Results cached 1 hour (corpus) or 15 min (web fallback).
+
+EXAMPLES:
+  "NVIDIA reported record Q4 2025 earnings" → SUPPORTED (85%) with Reuters, Bloomberg evidence
+  "The Federal Reserve cut rates in March 2026" → CONTRADICTED (92%) — they held rates steady
+  "Apple is partnering with OpenAI" → SUPPORTED with 5 source evidence chain
+
+CONSTRAINTS: Claim must be 10-1000 characters. Be specific — include names, numbers, dates for best results.`,
   {
-    claim: z.string().describe("The claim to fact-check (10-1000 characters)"),
-    context: z.string().optional().describe("Category to narrow the search (e.g. 'tech', 'policy')"),
+    claim: z.string().min(10).describe("The factual claim to verify (10-1000 chars). Be specific — 'NVIDIA beat Q4 earnings by 20%' not just 'NVIDIA did well'"),
+    context: z.string().optional().describe("Category hint to narrow search: tech, markets, crypto, policy, health, energy"),
   },
   { readOnlyHint: true, openWorldHint: true },
   async ({ claim, context }) => {
     const data = (await api("POST", "/api/v1/verify", undefined, {
       claim,
       context,
-    })) as {
-      claim?: string;
-      verdict?: string;
-      confidence?: number;
-      summary?: string;
-      supporting_briefs?: { id?: string; headline?: string; confidence?: number; relevance?: number }[];
-      contradicting_briefs?: { id?: string; headline?: string; confidence?: number; relevance?: number }[];
-      nuances?: string;
-      sources_analyzed?: number;
-      briefs_matched?: number;
-      credits_used?: number;
-      processing_time_ms?: number;
-    };
-    const parts = [`# Claim Verification: ${data.verdict?.toUpperCase()}`];
-    parts.push(`\n**Claim:** ${data.claim}`);
-    parts.push(`**Verdict:** ${data.verdict} (confidence: ${((data.confidence ?? 0) * 100).toFixed(0)}%)`);
-    if (data.summary) parts.push(`\n## Summary\n${data.summary}`);
-    if (data.supporting_briefs?.length) {
-      parts.push("\n## Supporting Evidence");
-      parts.push(data.supporting_briefs.map((b) => `- ${b.headline} (${b.id}, confidence: ${b.confidence})`).join("\n"));
+    })) as Record<string, unknown>;
+
+    const verdict = data.verdict as string || "unknown";
+    const confidence = data.confidence as number || 0;
+    const confPct = Math.round(confidence * 100);
+    const emoji = verdict === "supported" ? "✓" : verdict === "contradicted" ? "✗" : verdict === "partially_supported" ? "~" : "?";
+
+    const parts = [`[${emoji} ${verdict.toUpperCase()}] Confidence: ${confPct}%`];
+    parts.push(`\nClaim: "${claim}"`);
+
+    // Summary
+    if (data.summary) parts.push(`\n${data.summary}`);
+
+    // Confidence breakdown
+    const breakdown = data.confidence_breakdown as Record<string, number> | undefined;
+    if (breakdown && Object.keys(breakdown).length > 0) {
+      parts.push(`\nConfidence Breakdown:`);
+      parts.push(`  Source Agreement:    ${Math.round((breakdown.source_agreement || 0) * 100)}%`);
+      parts.push(`  Source Quality:      ${Math.round((breakdown.source_quality || 0) * 100)}%`);
+      parts.push(`  Recency:            ${Math.round((breakdown.recency || 0) * 100)}%`);
+      parts.push(`  Corroboration:      ${Math.round((breakdown.corroboration_depth || 0) * 100)}%`);
     }
-    if (data.contradicting_briefs?.length) {
-      parts.push("\n## Contradicting Evidence");
-      parts.push(data.contradicting_briefs.map((b) => `- ${b.headline} (${b.id}, confidence: ${b.confidence})`).join("\n"));
+
+    // Evidence chain
+    const chain = data.evidence_chain as Array<Record<string, unknown>> | undefined;
+    if (chain?.length) {
+      parts.push(`\nEvidence Chain (${chain.length} sources):`);
+      for (const e of chain.slice(0, 5)) {
+        const pos = e.position ? `[${e.position}]` : "";
+        const rel = e.reliability ? ` (${Math.round(Number(e.reliability) * 100)}% reliable)` : "";
+        parts.push(`  ${pos} ${e.source}${rel}`);
+        if (e.snippet) parts.push(`    "${String(e.snippet).slice(0, 100)}"`);
+        if (e.url) parts.push(`    ${e.url}`);
+      }
     }
-    if (data.nuances) parts.push(`\n## Nuances\n${data.nuances}`);
-    parts.push(`\n_Analyzed ${data.sources_analyzed} sources, matched ${data.briefs_matched} briefs in ${data.processing_time_ms}ms_`);
+
+    // Nuances
+    if (data.nuances) parts.push(`\nNuances: ${data.nuances}`);
+
+    // Receipt
+    const receipt = data.receipt as Record<string, string> | undefined;
+    if (receipt?.id) parts.push(`\nVerification Receipt: ${receipt.id}`);
+
+    // Stats
+    parts.push(`\n_${data.sources_analyzed} sources analyzed | ${data.briefs_matched} briefs matched | ${data.processing_time_ms}ms | ${data.credits_used} credits_`);
+
     return text(parts.join("\n"));
   }
 );
@@ -227,7 +296,6 @@ server.tool(
     exclude_sources: z.string().optional().describe("Comma-separated domains to exclude"),
     limit: z.number().optional().describe("Max results (default 10)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ query, category, depth, include_sources, exclude_sources, limit }) => {
     const data = (await api("GET", "/api/v1/search", {
       q: query,
@@ -253,7 +321,6 @@ server.tool(
     include_sources: z.string().optional().describe("Comma-separated domains to include"),
     exclude_sources: z.string().optional().describe("Comma-separated domains to exclude"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ category, limit, include_sources, exclude_sources }) => {
     const data = (await api("GET", "/api/v1/feed", {
       category,
@@ -275,7 +342,6 @@ server.tool(
     brief_id: z.string().describe("Brief ID"),
     include_full_text: z.boolean().optional().describe("Include full body text (default true)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ brief_id, include_full_text }) => {
     const data = (await api("GET", `/api/v1/brief/${encodeURIComponent(brief_id)}`, {
       include_full_text: include_full_text ?? true,
@@ -293,7 +359,6 @@ server.tool(
   {
     urls: z.string().describe("Comma-separated URLs to extract (max 5)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ urls }) => {
     const urlList = urls.split(",").map((u) => u.trim()).filter(Boolean);
     const data = (await api("POST", "/api/v1/extract", undefined, {
@@ -320,7 +385,6 @@ server.tool(
   {
     name: z.string().describe("Entity name to look up"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ name }) => {
     const data = (await api("GET", `/api/v1/entities/${encodeURIComponent(name)}/briefs`)) as { briefs?: Brief[] };
     const briefs = data.briefs || [];
@@ -336,7 +400,6 @@ server.tool(
   {
     limit: z.number().optional().describe("Max entities to return"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ limit }) => {
     const data = (await api("GET", "/api/v1/entities/trending", {
       limit,
@@ -357,7 +420,6 @@ server.tool(
   {
     topic: z.string().describe("Topic to compare coverage on"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ topic }) => {
     // Find a relevant brief first
     const searchData = (await api("GET", "/api/v1/search", {
@@ -403,7 +465,6 @@ server.tool(
     category: z.string().optional().describe("Filter by category"),
     max_sources: z.number().optional().describe("Maximum sources to analyze"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ query, category, max_sources }) => {
     const data = (await api("POST", "/api/v1/research", undefined, {
       query,
@@ -467,7 +528,6 @@ server.tool(
   {
     brief_id: z.string().describe("Brief ID like PR-2026-0305-001"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ brief_id }) => {
     const data = (await api("GET", `/api/v1/brief/${encodeURIComponent(brief_id)}/timeline`)) as {
       brief_id?: string;
@@ -509,7 +569,6 @@ server.tool(
     topic: z.string().describe("Topic to forecast future developments for"),
     depth: z.enum(["fast", "standard", "deep"]).optional().describe("Analysis depth"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ topic, depth }) => {
     const data = (await api("POST", "/api/v1/forecast", undefined, {
       topic,
@@ -561,7 +620,6 @@ server.tool(
   {
     severity: z.string().optional().describe("Filter by severity level (e.g. high, medium, low)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ severity }) => {
     const data = (await api("GET", "/api/v1/contradictions", {
       severity,
@@ -597,7 +655,6 @@ server.tool(
     type: z.string().optional().describe("Event type to filter by"),
     subject: z.string().optional().describe("Subject or entity to filter events for"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ type, subject }) => {
     const data = (await api("GET", "/api/v1/events", {
       type,
@@ -638,7 +695,6 @@ server.tool(
     brief_id: z.string().describe("Brief ID like PR-2026-0305-001"),
     since: z.string().optional().describe("ISO timestamp to diff from (e.g. 2026-03-18T00:00:00Z)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ brief_id, since }) => {
     const data = (await api("GET", `/api/v1/brief/${encodeURIComponent(brief_id)}/diff`, {
       since,
@@ -694,7 +750,6 @@ server.tool(
     region: z.string().optional().describe("Region code (e.g. 'us', 'eu')"),
     verify: z.boolean().optional().describe("Enable VEROQ trust scoring on results"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ query, limit, freshness, region, verify }) => {
     const data = await api("GET", "/api/v1/web-search", {
       q: query,
@@ -717,7 +772,6 @@ server.tool(
     max_pages: z.number().optional().describe("Max pages to crawl (default 5)"),
     include_links: z.boolean().optional().describe("Include extracted links in response"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ url, depth, max_pages, include_links }) => {
     const data = await api("POST", "/api/v1/crawl", undefined, {
       url,
@@ -738,7 +792,6 @@ server.tool(
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, BTC)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(symbol.toUpperCase())}/price`)) as {
       status?: string;
@@ -770,7 +823,6 @@ server.tool(
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(symbol.toUpperCase())}/score`)) as {
       status?: string;
@@ -818,7 +870,6 @@ server.tool(
     days: z.number().optional().describe("Lookback period in days (default 7, max 30)"),
     limit: z.number().optional().describe("Max briefs to return (default 30)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ holdings, days, limit }) => {
     const data = (await api("POST", "/api/v1/portfolio/feed", { days, limit }, { holdings })) as {
       status?: string;
@@ -860,7 +911,6 @@ server.tool(
   {
     days: z.number().optional().describe("Lookback period in days (default 7)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ days }) => {
     const data = (await api("GET", "/api/v1/sectors", { days })) as {
       status?: string;
@@ -902,7 +952,6 @@ server.tool(
     interval: z.enum(["1d", "1wk", "1mo"]).optional().describe("Candle interval (default 1d)"),
     range: z.enum(["1mo", "3mo", "6mo", "1y", "2y", "5y"]).optional().describe("Date range (default 6mo)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol, interval, range }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(symbol.toUpperCase())}/candles`, {
       interval: interval || "1d",
@@ -942,7 +991,6 @@ server.tool(
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
     range: z.enum(["1mo", "3mo", "6mo", "1y", "2y", "5y"]).optional().describe("Date range for indicator calculation (default 6mo)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol, range }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(symbol.toUpperCase())}/technicals`, {
       range: range || "6mo",
@@ -975,7 +1023,6 @@ server.tool(
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, GOOGL)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(symbol.toUpperCase())}/earnings`)) as {
       status?: string;
@@ -1003,7 +1050,6 @@ server.tool(
   "veroq_market_movers",
   "Get today's top market movers: biggest gainers, biggest losers, and most actively traded stocks.",
   {},
-  { readOnlyHint: true, openWorldHint: true },
   async () => {
     const data = (await api("GET", "/api/v1/market/movers")) as {
       status?: string;
@@ -1042,7 +1088,6 @@ server.tool(
   "veroq_market_summary",
   "Get current values for major market indices: S&P 500, Nasdaq Composite, Dow Jones Industrial Average, and VIX volatility index.",
   {},
-  { readOnlyHint: true, openWorldHint: true },
   async () => {
     const data = (await api("GET", "/api/v1/market/summary")) as {
       status?: string;
@@ -1070,7 +1115,6 @@ server.tool(
     indicator: z.string().optional().describe("Specific indicator slug (e.g. gdp, cpi, unemployment, fed_funds, retail_sales). Omit for summary of all."),
     limit: z.number().optional().describe("Number of historical observations to return (default 30, max 100)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ indicator, limit }) => {
     if (indicator) {
       const data = (await api("GET", `/api/v1/economy/${encodeURIComponent(indicator)}`, { limit })) as {
@@ -1127,7 +1171,6 @@ server.tool(
   {
     pair: z.string().optional().describe("Forex pair (e.g. EURUSD, GBPUSD, USDJPY). Omit for all major pairs."),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ pair }) => {
     if (pair) {
       const data = (await api("GET", `/api/v1/forex/${encodeURIComponent(pair.toUpperCase())}`)) as {
@@ -1174,7 +1217,6 @@ server.tool(
   {
     symbol: z.string().optional().describe("Commodity slug (e.g. gold, silver, crude, natural_gas, copper, platinum). Omit for all."),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol }) => {
     if (symbol) {
       const data = (await api("GET", `/api/v1/commodities/${encodeURIComponent(symbol.toLowerCase())}`)) as {
@@ -1222,7 +1264,6 @@ server.tool(
   {
     symbol: z.string().optional().describe("Crypto symbol (e.g. BTC, ETH, SOL, ADA). Omit for market overview."),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol }) => {
     if (symbol) {
       const data = (await api("GET", `/api/v1/crypto/${encodeURIComponent(symbol.toUpperCase())}`)) as {
@@ -1281,7 +1322,6 @@ server.tool(
     symbol: z.string().describe("Crypto symbol (e.g. BTC, ETH, SOL)"),
     days: z.number().optional().describe("Number of days of history (default 30, max 365)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol, days }) => {
     const data = (await api("GET", `/api/v1/crypto/${encodeURIComponent(symbol.toUpperCase())}/chart`, {
       days: days || 30,
@@ -1328,7 +1368,6 @@ server.tool(
   {
     protocol: z.string().optional().describe("Protocol slug (e.g. aave, uniswap, lido, makerdao). Omit for DeFi overview."),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ protocol }) => {
     if (protocol) {
       const data = (await api("GET", `/api/v1/crypto/defi/${encodeURIComponent(protocol.toLowerCase())}`)) as {
@@ -1402,7 +1441,6 @@ server.tool(
     sort: z.string().optional().describe("Sort field (e.g. rsi, sentiment, market_cap, volume)"),
     limit: z.number().optional().describe("Max results (default 20)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ asset_type, sector, rsi_below, rsi_above, sentiment, macd_signal, earnings_within_days, price_min, price_max, min_volume, sort, limit }) => {
     const filters: Record<string, unknown> = {};
     if (rsi_below != null) filters.rsi_below = rsi_below;
@@ -1457,7 +1495,6 @@ server.tool(
   {
     preset_id: z.string().optional().describe("Preset ID to run. Omit to list all available presets."),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ preset_id }) => {
     if (preset_id) {
       const data = (await api("GET", `/api/v1/screener/presets/${encodeURIComponent(preset_id)}`)) as {
@@ -1523,7 +1560,6 @@ server.tool(
     alert_type: z.string().optional().describe("Alert type: price_above, price_below, rsi_above, rsi_below, sentiment_flip, volume_spike (required for create)"),
     threshold: z.number().optional().describe("Alert threshold value (required for create — price level or sentiment delta)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ action, ticker, alert_type, threshold }) => {
     if (action === "create") {
       if (!ticker || !alert_type) return text('Error: ticker and alert_type are required to create an alert.');
@@ -1591,7 +1627,6 @@ server.tool(
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, TSLA, BTC)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(symbol.toUpperCase())}/social`)) as {
       status?: string;
@@ -1638,7 +1673,6 @@ server.tool(
   "veroq_social_trending",
   "Get tickers and topics currently trending on social media. Shows the most discussed stocks and crypto across Reddit, Twitter, and other platforms.",
   {},
-  { readOnlyHint: true, openWorldHint: true },
   async () => {
     const data = (await api("GET", "/api/v1/social/trending")) as {
       status?: string;
@@ -1676,7 +1710,6 @@ server.tool(
     days: z.number().optional().describe("Lookback/forward window in days (default 30, max 90)"),
     limit: z.number().optional().describe("Max results (default 30, max 100)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ days, limit }) => {
     const data = (await api("GET", "/api/v1/market/ipos", {
       days,
@@ -1720,7 +1753,6 @@ server.tool(
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, BTC)"),
     limit: z.number().optional().describe("Max results (default 10)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol, limit }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(symbol.toUpperCase())}/news`, {
       limit,
@@ -1749,7 +1781,6 @@ server.tool(
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(symbol.toUpperCase())}/analysis`)) as {
       status?: string;
@@ -1808,7 +1839,6 @@ server.tool(
   {
     query: z.string().describe("Partial search query (minimum 2 characters)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ query }) => {
     const data = (await api("GET", "/api/v1/search/suggest", {
       q: query,
@@ -1851,7 +1881,6 @@ server.tool(
   {
     protocol: z.string().describe("Protocol slug (e.g. aave, uniswap, lido, makerdao, curve)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ protocol }) => {
     const data = (await api("GET", `/api/v1/crypto/defi/${encodeURIComponent(protocol.toLowerCase())}`)) as {
       status?: string;
@@ -1886,7 +1915,6 @@ server.tool(
     indicator: z.string().describe("Indicator slug (e.g. gdp, cpi, unemployment, fed_funds, retail_sales, housing_starts)"),
     limit: z.number().optional().describe("Number of historical observations to return (default 30, max 100)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ indicator, limit }) => {
     const data = (await api("GET", `/api/v1/economy/${encodeURIComponent(indicator)}`, { limit })) as {
       status?: string;
@@ -1926,7 +1954,6 @@ server.tool(
     ticker: z.string().describe("Ticker symbol to generate a report for (e.g. AAPL, BTC)"),
     tier: z.string().optional().describe("Report tier — 'quick' for a fast summary or 'deep' for full analysis (default 'quick')"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ ticker, tier }) => {
     const data = (await api("POST", "/api/v1/reports/generate", undefined, {
       ticker,
@@ -1956,7 +1983,6 @@ server.tool(
   {
     report_id: z.string().describe("The report ID to retrieve"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ report_id }) => {
     const data = (await api("GET", `/api/v1/reports/${encodeURIComponent(report_id)}`)) as {
       status?: string;
@@ -1996,7 +2022,6 @@ server.tool(
   {
     ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, BTC)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ ticker }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(ticker.toUpperCase())}/full`)) as {
       status?: string;
@@ -2045,7 +2070,6 @@ server.tool(
   {
     ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ ticker }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(ticker.toUpperCase())}/insider`)) as {
       status?: string;
@@ -2095,7 +2119,6 @@ server.tool(
   {
     ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ ticker }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(ticker.toUpperCase())}/filings`)) as {
       status?: string;
@@ -2140,7 +2163,6 @@ server.tool(
   {
     ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ ticker }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(ticker.toUpperCase())}/analysts`)) as {
       status?: string;
@@ -2189,7 +2211,6 @@ server.tool(
   {
     symbol: z.string().optional().describe("Ticker symbol to filter by (e.g. AAPL, NVDA). Omit for all recent congressional trades."),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ symbol }) => {
     const data = (await api("GET", "/api/v1/congress/trades", {
       ...(symbol ? { symbol: symbol.toUpperCase() } : {}),
@@ -2234,7 +2255,6 @@ server.tool(
   {
     ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ ticker }) => {
     const data = (await api("GET", `/api/v1/ticker/${encodeURIComponent(ticker.toUpperCase())}/institutions`)) as {
       status?: string;
@@ -2287,7 +2307,6 @@ server.tool(
     slug: z.string().describe("Agent slug identifier (e.g. 'portfolio-review', 'due-diligence', 'market-scanner')"),
     inputs: z.record(z.unknown()).describe("Input parameters for the agent — varies by agent type (e.g. { ticker: 'AAPL' } or { tickers: ['AAPL', 'GOOGL'] })"),
   },
-  { readOnlyHint: true, openWorldHint: true },
   async ({ slug, inputs }) => {
     const data = (await api("POST", `/api/v1/agents/run/${encodeURIComponent(slug)}`, undefined, inputs)) as {
       status?: string;
@@ -2319,132 +2338,24 @@ server.tool(
   }
 );
 
-
-// ── Prompts ──
-
-server.prompt(
-  "financial_analysis",
-  "Get a complete financial analysis of any ticker",
-  { ticker: z.string().describe("Stock ticker symbol (e.g., NVDA)") },
-  async ({ ticker }) => ({
-    messages: [{ role: "user" as const, content: { type: "text" as const, text: `Use the veroq_ask tool to get a complete analysis of ${ticker}. Include price, technicals, earnings, sentiment, and trade signal. Then use veroq_full to get the full profile.` } }]
-  })
-);
-
-server.prompt(
-  "fact_check",
-  "Verify a financial claim with evidence",
-  { claim: z.string().describe("The claim to verify") },
-  async ({ claim }) => ({
-    messages: [{ role: "user" as const, content: { type: "text" as const, text: `Use the veroq_verify tool to fact-check this claim: "${claim}". Show the verdict, confidence breakdown, and evidence chain.` } }]
-  })
-);
-
-server.prompt(
-  "market_overview",
-  "Get today's market overview with movers and trends",
-  async () => ({
-    messages: [{ role: "user" as const, content: { type: "text" as const, text: "Use veroq_market_summary to get major indices, veroq_market_movers for top gainers/losers, and veroq_ask to summarize today's market trends." } }]
-  })
-);
-
-// ── Resources ──
-
-server.resource(
-  "api-docs",
-  "https://veroq.ai/api-reference",
-  { mimeType: "text/html", description: "VEROQ API Reference — 300+ endpoints for financial intelligence" },
-  async () => ({
-    contents: [{ uri: "https://veroq.ai/api-reference", text: "VEROQ API Reference: https://veroq.ai/api-reference — 300+ endpoints covering ask, verify, search, price, technicals, screener, crypto, forex, commodities, economy, and more." }]
-  })
-);
-
-server.resource(
-  "pricing",
-  "https://veroq.ai/pricing",
-  { mimeType: "text/html", description: "VEROQ Pricing — Free tier: 1,000 credits/month" },
-  async () => ({
-    contents: [{ uri: "https://veroq.ai/pricing", text: "VEROQ Pricing: Free 1,000 credits/mo, Builder $24/mo (3K credits), Startup $79/mo (10K credits), Growth $179/mo (40K credits), Scale $399/mo (100K credits)." }]
-  })
-);
-
 // --- Start ---
 
 const mode = process.env.MCP_TRANSPORT || (process.argv.includes("--http") ? "http" : "stdio");
 
 if (mode === "http") {
   const PORT = parseInt(process.env.PORT || "3100", 10);
-  const sessions = new Map<string, { transport: StreamableHTTPServerTransport }>();
-
-  // Collect tool registrations so we can replay them on new server instances
-  // The global `server` has all 52 tools — we use it for stdio mode
-  // For HTTP, we create fresh instances per session
-
   const httpServer = createServer(async (req, res) => {
-    // CORS
+    // CORS for browser-based MCP clients
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Mcp-Session-Id");
     res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
     if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
 
-    // Smithery server card for discovery
-    if (req.method === "GET" && req.url === "/.well-known/mcp/server-card.json") {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({
-        name: "veroq",
-        description: "VEROQ — the trust protocol for agentic AI. 52 tools for verified financial intelligence: ask, verify, search, price, technicals, screener, and more. 1,061+ tickers.",
-        version: "1.1.0",
-        homepage: "https://veroq.ai",
-        repository: "https://github.com/Veroq-api/veroq-mcp",
-        tools: 52,
-        capabilities: ["ask", "verify", "search", "price", "technicals", "earnings", "sentiment", "screener", "backtest", "full", "trending", "entities", "crypto", "forex", "commodities", "economy"],
-        config: {
-          VEROQ_API_KEY: { type: "string", required: true, description: "Your VEROQ API key. Get a free key at veroq.ai/pricing" }
-        }
-      }));
-      return;
-    }
-
-    const sessionId = req.headers["mcp-session-id"] as string | undefined;
-
-    // Existing session — route to its transport
-    if (sessionId && sessions.has(sessionId)) {
-      await sessions.get(sessionId)!.transport.handleRequest(req, res);
-      return;
-    }
-
-    // New session — the global server can only connect once for stdio,
-    // but for HTTP we need per-session handling. Use a single stateless approach:
-    // create transport, connect server (closing previous if needed), handle request.
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => crypto.randomUUID(),
-    });
-
-    // For simplicity, reuse the global server — close previous transport first
-    try { await server.close(); } catch {}
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => crypto.randomUUID() });
     await server.connect(transport);
     await transport.handleRequest(req, res);
-
-    // Track session for subsequent requests
-    const sid = (transport as any).sessionId as string | undefined;
-    if (sid) {
-      sessions.set(sid, { transport });
-      transport.onclose = () => sessions.delete(sid);
-    }
   });
-
-  // Clean stale sessions every 5 minutes
-  setInterval(() => {
-    if (sessions.size > 100) {
-      const oldest = [...sessions.keys()].slice(0, sessions.size - 50);
-      for (const sid of oldest) {
-        sessions.get(sid)?.transport.close?.();
-        sessions.delete(sid);
-      }
-    }
-  }, 300_000);
-
   httpServer.listen(PORT, () => {
     console.error(`VEROQ MCP server (HTTP) listening on port ${PORT}`);
   });
