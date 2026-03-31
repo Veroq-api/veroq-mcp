@@ -23,6 +23,8 @@ export {
   type EnhancedResponse,
 } from "../mcp/veroq-server-enhancer.js";
 
+export { registerHighLevelTools } from "./high-level-tools.js";
+
 export {
   checkPermissions,
   checkOutputSafety,
