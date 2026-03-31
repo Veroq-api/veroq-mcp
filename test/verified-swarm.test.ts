@@ -285,6 +285,63 @@ describe("verified-swarm", () => {
     assert.ok(result.verificationSummary.avgConfidence <= 100);
   });
 
+  // ── Edge Cases ──
+
+  it("handles empty roles array gracefully", async () => {
+    const swarm = createVerifiedSwarm({ roles: [] });
+    const result = await swarm.run("Empty pipeline");
+
+    assert.equal(result.steps.length, 0);
+    assert.equal(result.synthesis, null);
+    assert.equal(result.totalCreditsUsed, 0);
+    assert.equal(result.verificationSummary.avgConfidence, 0);
+  });
+
+  it("handles zero credit budget", async () => {
+    const swarm = createVerifiedSwarm({
+      roles: ["planner", "researcher", "synthesizer"],
+      creditBudget: 0,
+      apiFn: mockApi as any,
+    });
+    const result = await swarm.run("Zero budget");
+
+    assert.equal(result.steps.length, 0);
+    assert.equal(result.totalCreditsUsed, 0);
+  });
+
+  it("handles custom agent execute that throws", async () => {
+    let attempts = 0;
+    const swarm = createVerifiedSwarm({
+      roles: ["researcher"],
+      agents: [{
+        role: "researcher" as const,
+        name: "Failing Researcher",
+        maxRetries: 2,
+        execute: async () => {
+          attempts++;
+          throw new Error("API timeout");
+        },
+      }],
+    });
+    const result = await swarm.run("Error test");
+
+    assert.equal(result.steps.length, 1);
+    assert.ok(result.steps[0].output.summary?.includes("failed"));
+    assert.ok(result.steps[0].output.data.error);
+    assert.ok(attempts >= 2); // Original + retries
+  });
+
+  it("synthesizer handles empty steps without NaN", async () => {
+    const swarm = createVerifiedSwarm({
+      roles: ["synthesizer"], // Only synthesizer, no prior steps
+    });
+    const result = await swarm.run("Synthesis only");
+
+    assert.equal(result.steps.length, 1);
+    assert.ok(Number.isFinite(result.steps[0].output.confidence));
+    assert.ok(!Number.isNaN(result.verificationSummary.avgConfidence));
+  });
+
   // ── Regression: Existing tools still work ──
 
   it("existing permission engine unaffected by swarm", () => {

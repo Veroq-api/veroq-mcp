@@ -32,7 +32,7 @@ VeroQ provides the verified truth layer for AI agents. This guide covers the thr
 │  recordToolCall() → latency, errors, escalations  │
 │  getMetricsSummary() → rates, breakdown           │
 ├──────────────────────────────────────────────────┤
-│              58 MCP Tools                         │
+│              59 MCP Tools                         │
 │  veroq_ask, veroq_verify, veroq_run_verified_swarm│
 ├──────────────────────────────────────────────────┤
 │              VeroQ API                            │
@@ -291,7 +291,7 @@ Cost: ~15-25 credits
 #### SDK Usage (TypeScript)
 
 ```typescript
-import { VeroqClient } from "veroq";
+import { VeroqClient } from "veroq-sdk";
 
 const client = new VeroqClient({ apiKey: "vq_live_..." });
 
@@ -380,7 +380,7 @@ const result = await swarm.run("Is now a good time to invest in semiconductors?"
 |-------|-------|--------|
 | Tool Factory | 8 | ✓ |
 | Server Enhancer | 8 | ✓ |
-| Permission Engine | 42 | ✓ |
+| Permission Engine | 43 | ✓ |
 | Observability | 8 | ✓ |
 | Integration | 10 | ✓ |
 | High-Level Tools | 8 | ✓ |

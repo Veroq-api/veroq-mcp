@@ -382,7 +382,9 @@ function runSynthesizer(query: string, steps: SwarmStepResult[]): SwarmStepOutpu
     .map(s => `[${s.agent.name}] ${s.output.summary}`);
 
   const allRisks = steps.flatMap(s => s.output.risks || []);
-  const avgConfidence = steps.reduce((sum, s) => sum + (s.output.confidence || 0), 0) / steps.length;
+  const avgConfidence = steps.length > 0
+    ? steps.reduce((sum, s) => sum + (s.output.confidence || 0), 0) / steps.length
+    : 0;
   const escalatedSteps = steps.filter(s => s.escalated);
 
   let synthesis = `Analysis of: ${query}\n\n`;
@@ -412,8 +414,13 @@ function runSynthesizer(query: string, steps: SwarmStepResult[]): SwarmStepOutpu
 // ── Extraction Helpers ──
 
 function extractTicker(query: string): string | null {
-  const match = query.match(/\b([A-Z]{1,5})\b/);
-  return match?.[1] || null;
+  // Skip common uppercase words, match ticker-shaped tokens (1-5 uppercase letters)
+  const SKIP = new Set(["FULL", "THE", "AND", "FOR", "WITH", "FROM", "THAT", "THIS", "WHAT", "WHEN", "HOW", "NOT", "ARE", "BUT"]);
+  const matches = query.match(/\b([A-Z]{1,5})\b/g) || [];
+  for (const m of matches) {
+    if (!SKIP.has(m)) return m;
+  }
+  return null;
 }
 
 function extractClaims(data: Record<string, unknown>): string[] {
@@ -597,13 +604,6 @@ export class VerifiedSwarm {
         !["verifier", "critic", "synthesizer"].includes(agent.role) &&
         output.claims?.length
       ) {
-        const claim = output.claims[0];
-        const verifyResult = checkOutputSafety(
-          "veroq_verify_market_claim",
-          output.data,
-          { highStakesThreshold: this.config.escalationThreshold },
-        );
-
         const confidenceScore = output.confidence ?? 70;
         verification = {
           confidenceScore,

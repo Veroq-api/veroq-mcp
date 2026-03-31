@@ -8,7 +8,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createVeroQTool } from "./veroq-tool-factory.js";
-import { createVerifiedSwarm } from "../swarm/index.js";
+import { createVerifiedSwarm, type SwarmRole } from "../swarm/index.js";
 
 type ApiFn = (
   method: "GET" | "POST",
@@ -369,12 +369,12 @@ EXAMPLE: { "query": "Is now a good time to invest in semiconductors?", "escalati
     }),
     execute: async ({ query, roles, enableAutoVerification, escalationThreshold, creditBudget, enterpriseId }) => {
       const swarm = createVerifiedSwarm({
-        roles: roles as any,
+        roles: (roles || undefined) as SwarmRole[] | undefined,
         enableAutoVerification,
         escalationThreshold,
         creditBudget,
         enterpriseId,
-        apiFn: api as any,
+        apiFn: api as (method: "GET" | "POST", path: string, params?: Record<string, unknown>, body?: unknown) => Promise<unknown>,
       });
       const result = await swarm.run(query);
       return result as unknown as Record<string, unknown>;
