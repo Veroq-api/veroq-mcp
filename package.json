@@ -1,7 +1,7 @@
 {
   "name": "veroq-mcp",
-  "version": "1.1.0",
-  "description": "MCP server for VEROQ — verified financial intelligence for AI agents",
+  "version": "2.0.0",
+  "description": "The verified intelligence layer for AI agents — 62 MCP tools, multi-agent swarm, enterprise safety",
   "type": "module",
   "bin": {
     "veroq-mcp": "./dist/server.js"
@@ -25,12 +25,17 @@
   "keywords": [
     "veroq",
     "mcp",
+    "model-context-protocol",
     "financial-intelligence",
     "ai-agents",
+    "verified-intelligence",
+    "multi-agent",
     "trading",
     "market-data",
     "claude",
-    "cursor"
+    "cursor",
+    "enterprise",
+    "fact-check"
   ],
   "license": "MIT",
   "homepage": "https://veroq.ai",
