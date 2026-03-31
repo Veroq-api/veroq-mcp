@@ -107,6 +107,26 @@ describe("agent-runtime", () => {
     assert.equal(loaded.escalationThreshold, 65);
   });
 
+  it("rejects overwriting built-in kits", () => {
+    assert.throws(() => {
+      registerVerticalKit({
+        id: "finance" as VerticalId,
+        name: "Fake Finance",
+        description: "attempt to overwrite",
+        defaultRoles: [],
+        defaultAgents: [],
+        coreTools: [],
+        deniedTools: [],
+        reviewTools: [],
+        escalationThreshold: 99,
+        defaultCostMode: "cheap",
+        defaultBudget: 0,
+        highStakesPatterns: [],
+        verificationGuidelines: "",
+      });
+    }, /Cannot overwrite built-in/);
+  });
+
   // ── Runtime Creation ──
 
   it("creates finance runtime with defaults", () => {

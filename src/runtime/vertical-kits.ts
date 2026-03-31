@@ -59,8 +59,9 @@ const FINANCE_KIT: VerticalKit = {
     { role: "researcher", name: "Financial Researcher", tool: "veroq_analyze_ticker" },
     { role: "verifier", name: "Claim Verifier", tool: "veroq_verify_market_claim" },
     { role: "critic", name: "Devil's Advocate" },
-    { role: "risk_assessor", name: "Risk Analyst", tool: "veroq_generate_trading_signal" },
     { role: "synthesizer", name: "Portfolio Synthesizer" },
+    // risk_assessor available as opt-in role (not in defaultRoles)
+    { role: "risk_assessor", name: "Risk Analyst", tool: "veroq_generate_trading_signal" },
   ],
 
   coreTools: [
@@ -241,7 +242,13 @@ export function getAvailableVerticals(): VerticalId[] {
   return Object.keys(KITS) as VerticalId[];
 }
 
-/** Register a custom vertical kit */
+/** Built-in kit IDs that cannot be overwritten */
+const BUILT_IN_IDS = new Set<string>(["finance", "legal", "research", "compliance", "custom"]);
+
+/** Register a custom vertical kit. Cannot overwrite built-in kits. */
 export function registerVerticalKit(kit: VerticalKit): void {
+  if (BUILT_IN_IDS.has(kit.id)) {
+    throw new Error(`Cannot overwrite built-in vertical "${kit.id}". Use a unique ID.`);
+  }
   KITS[kit.id as VerticalId] = kit;
 }

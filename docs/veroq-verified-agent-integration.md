@@ -608,8 +608,9 @@ result = client.create_runtime("Analyze NVDA", vertical="finance")
 | Integration | 10 | ✓ |
 | High-Level Tools | 8 | ✓ |
 | Verified Swarm | 22 | ✓ |
+| Cost Router | 20 | ✓ |
 | Feedback Loop | 17 | ✓ |
-| Agent Runtime | 22 | ✓ |
+| Agent Runtime | 23 | ✓ |
 | Agent Coordinator | 22 | ✓ |
 | Fact Checker | 16 | ✓ |
-| **Total** | **166 (MCP) + 38 (demo)** | **All passing** |
+| **Total** | **167 (MCP) + 38 (demo)** | **All passing** |

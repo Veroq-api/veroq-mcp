@@ -114,6 +114,9 @@ export class VerifiedAgentRuntime {
   readonly vertical: VerticalId;
   readonly kit: VerticalKit;
   readonly enabledKits: VerticalKit[];
+  private mergedCoreTools: string[];
+  private mergedDeniedTools: string[];
+  private mergedReviewTools: string[];
   private swarmConfig: SwarmConfig;
   private swarm: VerifiedSwarm | null = null;
 
@@ -139,10 +142,12 @@ export class VerifiedAgentRuntime {
       }
     }
 
-    // Merge tools from all enabled kits
-    const allCoreTools = [...new Set(this.enabledKits.flatMap(k => k.coreTools))];
-    const allDenied = [...new Set(this.enabledKits.flatMap(k => k.deniedTools))];
-    const allReview = [...new Set(this.enabledKits.flatMap(k => k.reviewTools))];
+    // Merge tools from all enabled kits (store for getInfo)
+    this.mergedCoreTools = [...new Set(this.enabledKits.flatMap(k => k.coreTools))];
+    this.mergedDeniedTools = [...new Set(this.enabledKits.flatMap(k => k.deniedTools))];
+    this.mergedReviewTools = [...new Set(this.enabledKits.flatMap(k => k.reviewTools))];
+    const allDenied = this.mergedDeniedTools;
+    const allReview = this.mergedReviewTools;
 
     // Resolve agents: start with primary kit defaults, overlay custom agents
     const agents = [...primaryKit.defaultAgents];
@@ -208,9 +213,9 @@ export class VerifiedAgentRuntime {
       creditBudget: this.swarmConfig.creditBudget ?? 50,
       escalationThreshold: this.swarmConfig.escalationThreshold ?? 80,
       roles: this.swarmConfig.roles ?? [],
-      coreTools: this.kit.coreTools,
-      deniedTools: this.enabledKits.flatMap(k => k.deniedTools),
-      reviewTools: this.enabledKits.flatMap(k => k.reviewTools),
+      coreTools: this.mergedCoreTools,
+      deniedTools: this.mergedDeniedTools,
+      reviewTools: this.mergedReviewTools,
       verificationGuidelines: this.kit.verificationGuidelines,
     };
   }
