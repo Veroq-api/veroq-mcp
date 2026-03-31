@@ -32,7 +32,7 @@ VeroQ provides the verified truth layer for AI agents. This guide covers the thr
 │  recordToolCall() → latency, errors, escalations  │
 │  getMetricsSummary() → rates, breakdown           │
 ├──────────────────────────────────────────────────┤
-│              59 MCP Tools                         │
+│              60 MCP Tools                         │
 │  veroq_ask, veroq_verify, veroq_run_verified_swarm│
 ├──────────────────────────────────────────────────┤
 │              VeroQ API                            │

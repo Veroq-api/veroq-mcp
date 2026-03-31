@@ -506,7 +506,10 @@ export interface EnterpriseConfig {
   enableWebSearchFallback?: boolean;
 }
 
+let activeEnterpriseConfig: EnterpriseConfig | null = null;
+
 export function configureEnterprise(config: EnterpriseConfig): void {
+  activeEnterpriseConfig = config;
   setPermissionContext({
     enterpriseId: config.enterpriseId,
     sessionId: config.sessionId,
@@ -523,6 +526,11 @@ export function configureEnterprise(config: EnterpriseConfig): void {
     escalationTools: config.escalationTools ?? ["veroq_ask", "veroq_verify", "veroq_generate_trading_signal"],
     escalationPauses: config.escalationPauses ?? false,
   });
+}
+
+/** Get current enterprise config (includes feedback loop settings). */
+export function getEnterpriseConfig(): Readonly<EnterpriseConfig> | null {
+  return activeEnterpriseConfig;
 }
 
 // ── Helpers ──

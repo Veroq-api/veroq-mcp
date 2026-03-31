@@ -73,6 +73,8 @@ export interface FeedbackConfig {
   enableWebSearchFallback: boolean;
   /** Max feedback entries per session (default: 100) */
   maxEntriesPerSession: number;
+  /** Enterprise ID for audit trail */
+  enterpriseId?: string;
   /** Web search function (injected — keeps module testable without real HTTP) */
   webSearchFn?: (query: string) => Promise<WebSearchFallbackResult>;
   /** Pipeline routing function (injected) */
@@ -183,7 +185,7 @@ export async function collectSwarmFeedback(
       const entry: FeedbackEntry = {
         id: generateFeedbackId(),
         sessionId: result.sessionId,
-        enterpriseId: undefined,
+        enterpriseId: cfg.enterpriseId,
         timestamp: new Date().toISOString(),
         query: result.query,
         stepRole: step.agent.role,

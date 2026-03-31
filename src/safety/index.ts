@@ -9,6 +9,7 @@ export {
   getFullAuditTrail,
   getDecisionLineage,
   configureEnterprise,
+  getEnterpriseConfig,
   isHighStakesOutput,
   type ToolPermissionContext,
   type PermissionMode,

@@ -729,6 +729,7 @@ export class VerifiedSwarm {
           feedbackThreshold: this.config.feedbackThreshold,
           autoRouteToPipeline: this.config.autoRouteToPipeline,
           enableWebSearchFallback: this.config.enableWebSearchFallback,
+          enterpriseId: this.config.enterpriseId,
           webSearchFn: this.config.webSearchFn,
           pipelineRouteFn: this.config.pipelineRouteFn,
         });

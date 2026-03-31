@@ -470,7 +470,7 @@ EXAMPLE: { "action": "metrics" }`,
       if (action === "query") {
         const entries = getFeedbackQueue({
           sessionId,
-          status: status as any,
+          status: status as "pending" | "enriched" | "routed" | "resolved" | "dismissed" | undefined,
           limit: limit || 20,
         });
         return { status: "ok", count: entries.length, entries };
