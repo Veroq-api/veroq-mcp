@@ -8,6 +8,7 @@
 import { z, type ZodObject, type ZodRawShape } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { checkPermissions, checkOutputSafety } from "../safety/index.js";
+import { recordToolCall } from "../observability/index.js";
 
 // ── Types ──
 
@@ -216,12 +217,14 @@ export function createVeroQTool<
       }
 
       // 2. Execute with error handling
+      const execStart = Date.now();
       let result: TOutput;
       try {
         // Parse and validate input
         const validated = inputSchema.parse(params);
         result = await execute(validated);
       } catch (err: unknown) {
+        recordToolCall(name, Date.now() - execStart, true, false, false);
         const message =
           err instanceof z.ZodError
             ? `Invalid input: ${err.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join(", ")}`
@@ -278,6 +281,17 @@ export function createVeroQTool<
       if (permResult.highStakesTriggered) {
         outputText += `\n\n🔍 This query was flagged as high-stakes. Review recommended before acting.`;
       }
+
+      // 7. Record metrics
+      const execEnd = Date.now();
+      recordToolCall(
+        name,
+        execEnd - execStart,
+        false,
+        permResult.highStakesTriggered,
+        safetyCheck.escalated || false,
+        typeof result === 'object' && result !== null ? (result as Record<string, unknown>).confidence as number | undefined : undefined,
+      );
 
       return {
         content: [{ type: "text" as const, text: outputText }],

@@ -135,6 +135,29 @@ Lightweight coordinator and fact-checker in the open-source TradingAgents-Pro re
 
 **This is a demo, not the product.** It shows how any agent framework can plug into VeroQ.
 
+## Observability
+
+### MCP Metrics
+
+All tool calls are automatically tracked:
+- Calls per tool, error rate, average latency
+- High-stakes trigger rate and escalation frequency
+- Average confidence per tool
+
+Access via: `import { getMetricsSummary } from "./src/observability/index.js"`
+
+### Backend Admin Endpoints
+
+Enterprise customers get admin observability at:
+- `GET /admin/observability/dashboard` — aggregated metrics
+- `GET /admin/observability/verification-stats` — verification success rate
+- `GET /admin/observability/safety-triggers` — escalation frequency
+- `GET /admin/observability/tool-usage` — calls per intent
+- `GET /admin/observability/credit-consumption` — credit breakdown
+- `GET /admin/observability/high-stakes` — high-stakes query rate
+
+All endpoints accept `?period=24h|7d|30d` parameter.
+
 ## Key Files
 
 ### veroq-mcp repo
@@ -149,6 +172,9 @@ Lightweight coordinator and fact-checker in the open-source TradingAgents-Pro re
 | `test/tool-factory.test.ts` | 8 tests — tool registration, metadata, display |
 | `test/server-enhancer.test.ts` | 8 tests — enhanced tools, metadata extraction |
 | `test/permission-engine.test.ts` | 28 tests — rules, high-stakes, audit, enterprise |
+| `src/observability/metrics.ts` | Lightweight metrics collector for tool calls |
+| `src/observability/index.ts` | Observability module barrel export |
+| `test/observability.test.ts` | 8 tests — metrics recording, summary, rates |
 | `server.ts` | Main MCP server with 52 tools (unchanged) |
 
 ### TradingAgents-Pro repo (demo)
@@ -250,6 +276,7 @@ checkPermissions("veroq_screener_natural", { query: "oversold tech" });
 | Tool Factory | 8 | ✓ |
 | Server Enhancer | 8 | ✓ |
 | Permission Engine | 28 | ✓ |
+| Observability | 8 | ✓ |
 | Agent Coordinator | 22 | ✓ |
 | Fact Checker | 16 | ✓ |
-| **Total** | **82** | **All passing** |
+| **Total** | **90** | **All passing** |

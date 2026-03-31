@@ -1,10 +1,5 @@
 # veroq-mcp
 
-[![npm](https://img.shields.io/npm/v/veroq-mcp?color=2EE89A&label=npm)](https://www.npmjs.com/package/veroq-mcp)
-[![Downloads](https://img.shields.io/npm/dm/veroq-mcp?color=2EE89A)](https://www.npmjs.com/package/veroq-mcp)
-[![License](https://img.shields.io/badge/license-MIT-2EE89A)](LICENSE)
-[![smithery badge](https://smithery.ai/badge/Veroq/veroq)](https://smithery.ai/servers/Veroq/veroq)
-
 MCP server for [VEROQ](https://veroq.ai) — verified financial intelligence for AI agents.
 
 ## Install
@@ -143,10 +138,3 @@ Open **Settings > MCP Servers > Add Server**:
 | `VEROQ_BASE_URL` | No | API base URL (default: `https://api.thepolarisreport.com`) |
 
 Note: `POLARIS_API_KEY` and `POLARIS_BASE_URL` are also accepted for backward compatibility.
-
-## Links
-
-- [VEROQ](https://veroq.ai) — Interactive demos
-- [API Reference](https://veroq.ai/api-reference) — 300+ endpoints
-- [Python SDK](https://github.com/Veroq-api/veroq-python)
-- [TypeScript SDK](https://github.com/Veroq-api/veroq-js)
