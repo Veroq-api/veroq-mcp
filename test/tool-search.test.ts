@@ -207,21 +207,20 @@ describe("tool-search-enhanced", () => {
 
   // ── Synonym Coverage ──
 
-  it("search would match synonym-expanded terms", () => {
-    // Verify the synonym mapping covers key user intents
-    const SYNONYMS: Record<string, string[]> = {
-      price: ["ticker_price", "candles", "market_summary"],
-      verify: ["verify", "verify_market_claim", "contradictions"],
-      analyze: ["analyze_ticker", "full", "ticker_analysis"],
-      screen: ["screener", "screener_presets", "trading_signal"],
-      crypto: ["crypto", "crypto_chart", "defi", "defi_protocol"],
-    };
+  it("synonym-expanded tools exist in the registry", () => {
+    const server = freshServer();
+    registerHighLevelTools(server, mockApi as any);
+    const tools = getRegisteredTools();
+    const names = tools.map(t => t.name);
 
-    // "price" should expand to include ticker_price
-    assert.ok(SYNONYMS.price.includes("ticker_price"));
-    // "verify" should expand to include verify_market_claim
-    assert.ok(SYNONYMS.verify.includes("verify_market_claim"));
-    // "analyze" should expand to include full
-    assert.ok(SYNONYMS.analyze.includes("full"));
+    // Synonym targets should map to actual registered tools
+    const synonymTargets = [
+      "veroq_analyze_ticker",     // from "analyze"
+      "veroq_verify_market_claim", // from "verify"
+      "veroq_compare_tickers",    // from "compare"
+    ];
+    for (const target of synonymTargets) {
+      assert.ok(names.includes(target), `Synonym target ${target} should exist in registry`);
+    }
   });
 });

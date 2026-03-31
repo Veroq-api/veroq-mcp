@@ -26,6 +26,21 @@ function text(s: string) {
   return { content: [{ type: "text" as const, text: s }] };
 }
 
+// ── Synonym map for tool search (hoisted to module scope for performance) ──
+const SEARCH_SYNONYMS: Record<string, string[]> = {
+  price: ["ticker_price", "candles", "market_summary"],
+  verify: ["verify", "verify_market_claim", "contradictions"],
+  analyze: ["analyze_ticker", "full", "ticker_analysis"],
+  earnings: ["earnings", "filings", "analysts"],
+  compare: ["compare", "compare_tickers", "correlation"],
+  screen: ["screener", "screener_presets", "trading_signal"],
+  insider: ["insider", "congress", "institutions"],
+  crypto: ["crypto", "crypto_chart", "defi", "defi_protocol"],
+  economy: ["economy", "economy_indicator", "forex", "commodities"],
+  risk: ["risk_assessor", "alerts", "verified_swarm"],
+  news: ["feed", "search", "ticker_news", "trending"],
+};
+
 // ── Tool Definitions ──
 
 export function registerHighLevelTools(server: McpServer, api: ApiFn): void {
@@ -311,23 +326,10 @@ EXAMPLE: { "query": "risk assessment", "category": "trading" }`,
       const words = q.split(/\s+/).filter(w => w.length >= 2);
       const maxResults = limit || 5;
 
-      // ── Synonym expansion for common queries ──
-      const SYNONYMS: Record<string, string[]> = {
-        price: ["ticker_price", "candles", "market_summary"],
-        verify: ["verify", "verify_market_claim", "contradictions"],
-        analyze: ["analyze_ticker", "full", "ticker_analysis"],
-        earnings: ["earnings", "filings", "analysts"],
-        compare: ["compare", "compare_tickers", "correlation"],
-        screen: ["screener", "screener_presets", "trading_signal"],
-        insider: ["insider", "congress", "institutions"],
-        crypto: ["crypto", "crypto_chart", "defi", "defi_protocol"],
-        economy: ["economy", "economy_indicator", "forex", "commodities"],
-        risk: ["risk_assessor", "alerts", "verified_swarm"],
-        news: ["feed", "search", "ticker_news", "trending"],
-      };
+      // Synonym expansion (map is module-level constant, see SEARCH_SYNONYMS above)
       const expandedTerms = new Set(words);
       for (const w of words) {
-        const syns = SYNONYMS[w];
+        const syns = SEARCH_SYNONYMS[w];
         if (syns) syns.forEach(s => expandedTerms.add(s));
       }
 
@@ -344,7 +346,15 @@ EXAMPLE: { "query": "risk assessment", "category": "trading" }`,
       }
 
       // ── Score internal tools ──
-      const all = getRegisteredTools();
+      // Deduplicate by name (registry can accumulate duplicates across calls)
+      const allRaw = getRegisteredTools();
+      const seen = new Set<string>();
+      const all = allRaw.filter(t => {
+        if (seen.has(t.name)) return false;
+        seen.add(t.name);
+        return true;
+      });
+
       type ScoredTool = {
         name: string; description: string; category: string; credits: number;
         score: number; whenToUse: string; returnsSnippet: string;
@@ -357,9 +367,10 @@ EXAMPLE: { "query": "risk assessment", "category": "trading" }`,
       for (const tool of all) {
         const desc = (tool.description || "").toLowerCase();
         const fullText = `${tool.name} ${desc} ${tool.category || ""}`;
+        const toolCategory = tool.category || "general";
 
-        // Category filter
-        if (catFilter && tool.category && tool.category !== catFilter) continue;
+        // Category filter (treat undefined category as "general")
+        if (catFilter && toolCategory !== catFilter) continue;
         // Cost filter
         if (maxCost != null && tool.credits != null && tool.credits > maxCost) continue;
         // Vertical denied filter
@@ -388,13 +399,13 @@ EXAMPLE: { "query": "risk assessment", "category": "trading" }`,
 
         // Extract WHEN TO USE and RETURNS snippets from standardized descriptions
         const rawDesc = tool.description || "";
-        const whenMatch = rawDesc.match(/WHEN TO USE:\s*(.+?)(?:\n|RETURNS|COST|$)/s);
-        const returnsMatch = rawDesc.match(/RETURNS:\s*(.+?)(?:\n|COST|EXAMPLE|$)/s);
+        const whenMatch = rawDesc.match(/WHEN TO USE:\s*([\s\S]+?)(?=\nRETURNS|\nCOST|$)/);
+        const returnsMatch = rawDesc.match(/RETURNS:\s*([\s\S]+?)(?=\nCOST|\nEXAMPLE|$)/);
 
-        // Permission check (lightweight — just check, don't log)
+        // Permission check (disable audit logging to avoid pollution)
         let permStatus = "allowed";
         try {
-          const perm = checkPermissions(tool.name, {});
+          const perm = checkPermissions(tool.name, {}, { auditEnabled: false });
           if (perm.decision === "deny") permStatus = "denied";
           else if (perm.decision === "review") permStatus = "review";
         } catch { /* ignore */ }
@@ -455,6 +466,28 @@ EXAMPLE: { "query": "risk assessment", "category": "trading" }`,
         } catch { /* no external registry */ }
       }
 
+      // If no keyword matches, return top high-level tools as fallback
+      if (scored.length === 0) {
+        const fallback = all
+          .filter(t => {
+            const isHL = ["analyze_ticker", "verify_market", "ask", "comprehensive", "verified_swarm"]
+              .some(k => t.name.includes(k));
+            return isHL;
+          })
+          .slice(0, maxResults)
+          .map(t => {
+            const rawDesc = t.description || "";
+            const whenMatch = rawDesc.match(/WHEN TO USE:\s*([\s\S]+?)(?=\nRETURNS|\nCOST|$)/);
+            return {
+              name: t.name, description: rawDesc.split("\n")[0] || rawDesc.slice(0, 120),
+              category: t.category || "general", credits: t.credits ?? 0,
+              score: 1, whenToUse: whenMatch?.[1]?.trim().slice(0, 200) || "",
+              returnsSnippet: "", isExternal: false,
+              isHighLevel: true, permissionStatus: "allowed", verificationSupport: false,
+            };
+          });
+        return fallback;
+      }
       return scored.sort((a, b) => b.score - a.score).slice(0, maxResults);
     },
     display: (result) => {
