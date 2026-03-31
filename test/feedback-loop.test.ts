@@ -58,6 +58,9 @@ function makeResult(steps: SwarmStepResult[], overrides: Partial<SwarmResult> = 
     escalationNotices: [],
     verificationSummary: { stepsVerified: 0, stepsTotal: steps.length, avgConfidence: 70, flaggedSteps: 0 },
     feedback: [],
+    budget: { totalBudget: 50, spent: 0, remaining: 50, stepsCompleted: 0, stepsSkipped: 0, budgetExhausted: false },
+    costBreakdown: [],
+    cacheStats: { hits: 0, misses: 0, hitRate: 0 },
     ...overrides,
   };
 }

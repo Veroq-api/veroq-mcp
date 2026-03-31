@@ -59,6 +59,16 @@ export {
   type SwarmStepResult,
   type SwarmResult,
   type SwarmMemoryEntry,
+  type CostMode,
+  type ModelTier,
+  type StepCostRecord,
+  type BudgetStatus,
+  estimateStepCredits,
+  estimatePipelineCost,
+  BudgetTracker,
+  StepCache,
+  buildExecutionPlan,
+  getModelTier,
 } from "../swarm/index.js";
 
 export {

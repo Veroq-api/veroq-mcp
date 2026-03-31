@@ -23,6 +23,15 @@ import {
   type FeedbackEntry,
   type WebSearchFallbackResult,
 } from "../feedback/index.js";
+import {
+  type CostMode,
+  type StepCostRecord,
+  type BudgetStatus,
+  estimateStepCredits,
+  BudgetTracker,
+  StepCache,
+  buildExecutionPlan,
+} from "./cost-router.js";
 
 // ── Types ──
 
@@ -83,6 +92,12 @@ export interface SwarmConfig {
   webSearchFn?: (query: string) => Promise<WebSearchFallbackResult>;
   /** Pipeline routing function (injected) */
   pipelineRouteFn?: (entry: FeedbackEntry) => Promise<Record<string, unknown>>;
+  /** Cost mode: "balanced" (default), "cheap" (fastest/cheapest), "premium" (best quality) */
+  costMode?: CostMode;
+  /** Enable parallel execution of independent steps (default: false) */
+  enableParallelSteps?: boolean;
+  /** Cache TTL in milliseconds for sub-query results (default: 60000) */
+  cacheTtlMs?: number;
 }
 
 export interface SwarmStepInput {
@@ -116,6 +131,8 @@ export interface SwarmStepResult {
   escalationNotice?: string;
   durationMs: number;
   creditsUsed: number;
+  /** Cost details for this step */
+  cost?: StepCostRecord;
 }
 
 export interface SwarmResult {
@@ -135,6 +152,12 @@ export interface SwarmResult {
   };
   /** Feedback entries collected during this run (only if enableSelfImprovement is true) */
   feedback: FeedbackEntry[];
+  /** Budget status at end of run */
+  budget: BudgetStatus;
+  /** Per-step cost breakdown */
+  costBreakdown: StepCostRecord[];
+  /** Cache stats for this run */
+  cacheStats: { hits: number; misses: number; hitRate: number };
 }
 
 // ── Shared Memory ──
@@ -508,9 +531,10 @@ export function createVerifiedSwarm(config: SwarmConfig = {}): VerifiedSwarm {
 
 export class VerifiedSwarm {
   readonly sessionId: string;
-  readonly config: Required<Pick<SwarmConfig, "enableAutoVerification" | "escalationThreshold" | "creditBudget" | "memoryLimit" | "enableSelfImprovement" | "feedbackThreshold" | "autoRouteToPipeline" | "enableWebSearchFallback">> & SwarmConfig;
+  readonly config: Required<Pick<SwarmConfig, "enableAutoVerification" | "escalationThreshold" | "creditBudget" | "memoryLimit" | "enableSelfImprovement" | "feedbackThreshold" | "autoRouteToPipeline" | "enableWebSearchFallback" | "costMode" | "enableParallelSteps" | "cacheTtlMs">> & SwarmConfig;
   private agents: SwarmAgent[];
   private memory: SwarmMemory;
+  private cache: StepCache;
 
   constructor(config: SwarmConfig = {}) {
     this.sessionId = config.sessionId || generateSessionId();
@@ -524,9 +548,13 @@ export class VerifiedSwarm {
       feedbackThreshold: config.feedbackThreshold ?? 70,
       autoRouteToPipeline: config.autoRouteToPipeline ?? false,
       enableWebSearchFallback: config.enableWebSearchFallback ?? true,
+      costMode: config.costMode ?? "balanced",
+      enableParallelSteps: config.enableParallelSteps ?? false,
+      cacheTtlMs: config.cacheTtlMs ?? 60_000,
     };
     this.agents = resolveAgents(this.config);
     this.memory = new SwarmMemory(this.config.memoryLimit);
+    this.cache = new StepCache();
 
     // Configure enterprise context if provided
     if (config.enterpriseId) {
@@ -549,6 +577,11 @@ export class VerifiedSwarm {
     return this.memory;
   }
 
+  /** Get the step cache (for inspecting cache stats) */
+  getCache(): StepCache {
+    return this.cache;
+  }
+
   /**
    * Run the swarm on a query.
    *
@@ -558,136 +591,30 @@ export class VerifiedSwarm {
   async run(query: string): Promise<SwarmResult> {
     const startTime = Date.now();
     const steps: SwarmStepResult[] = [];
-    let totalCredits = 0;
+    const costBreakdown: StepCostRecord[] = [];
+    const budget = new BudgetTracker(this.config.creditBudget);
     let swarmEscalated = false;
     const escalationNotices: string[] = [];
 
-    for (const agent of this.agents) {
-      // Budget check
-      if (totalCredits >= this.config.creditBudget) {
-        break;
-      }
+    // Build execution plan (parallel groups or sequential)
+    const plan = buildExecutionPlan(this.agents, this.config.enableParallelSteps);
 
-      const stepStart = Date.now();
+    for (const group of plan) {
+      // Run agents in this group (parallel if >1, sequential otherwise)
+      const groupResults = await (group.length > 1
+        ? Promise.all(group.map(agent => this.executeAgent(agent, query, steps, budget)))
+        : Promise.all([this.executeAgent(group[0], query, steps, budget)])
+      );
 
-      // Build step input
-      const stepInput: SwarmStepInput = {
-        query,
-        context: this.buildContext(steps),
-        memory: this.memory,
-        previousSteps: steps,
-      };
-
-      // 1. Permission check
-      const toolName = agent.tool || `swarm_${agent.role}`;
-      const permResult = checkPermissions(toolName, { query, role: agent.role, sessionId: this.sessionId });
-
-      if (permResult.decision === "deny") {
-        steps.push({
-          agent,
-          input: stepInput,
-          output: { data: {}, summary: `Denied: ${permResult.reason}` },
-          permission: permResult,
-          escalated: false,
-          durationMs: Date.now() - stepStart,
-          creditsUsed: 0,
-        });
-        continue;
-      }
-
-      // 2. Execute step (with retry on failure)
-      const output: SwarmStepOutput = await (async (): Promise<SwarmStepOutput> => {
-        try {
-          if (agent.role === "critic") return runCritic(steps);
-          if (agent.role === "synthesizer") return runSynthesizer(query, steps);
-          return await executeTool(agent, stepInput, this.config.apiFn);
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : "Unknown error";
-          const retries = agent.maxRetries ?? 1;
-          for (let attempt = 0; attempt < retries; attempt++) {
-            try {
-              if (agent.role === "critic") return runCritic(steps);
-              if (agent.role === "synthesizer") return runSynthesizer(query, steps);
-              return await executeTool(agent, stepInput, this.config.apiFn);
-            } catch { /* continue retrying */ }
+      for (const result of groupResults) {
+        if (!result) continue; // skipped by budget
+        steps.push(result.step);
+        costBreakdown.push(result.cost);
+        if (result.step.escalated) {
+          swarmEscalated = true;
+          if (result.step.escalationNotice) {
+            escalationNotices.push(`${result.step.agent.name}: ${result.step.escalationNotice}`);
           }
-          recordToolCall(toolName, Date.now() - stepStart, true, false, false);
-          return {
-            data: { error: message },
-            summary: `${agent.name} failed: ${message}`,
-            confidence: 0,
-            creditsUsed: 0,
-          };
-        }
-      })();
-
-      // 3. Auto-verification (if enabled and agent is not already verifier/critic/synthesizer)
-      let verification: SwarmStepResult["verification"] | undefined;
-      if (
-        this.config.enableAutoVerification &&
-        !["verifier", "critic", "synthesizer"].includes(agent.role) &&
-        output.claims?.length
-      ) {
-        const confidenceScore = output.confidence ?? 70;
-        verification = {
-          confidenceScore,
-          verificationStatus: confidenceScore >= 65 ? "verified"
-            : confidenceScore >= 40 ? "flagged"
-            : "low-confidence",
-          evidenceCount: (output.data.evidence_chain as unknown[] | undefined)?.length ?? 0,
-        };
-      }
-
-      // 4. Output safety check + escalation
-      const safetyCheck = checkOutputSafety(
-        toolName,
-        output.data,
-        { escalationThreshold: this.config.escalationThreshold },
-      );
-
-      // 5. Decision lineage
-      const lineage = getDecisionLineage(toolName, { query, role: agent.role }, output.data);
-
-      // 6. Record metrics
-      const stepDuration = Date.now() - stepStart;
-      const creditsUsed = output.creditsUsed ?? 3;
-      totalCredits += creditsUsed;
-      recordToolCall(
-        toolName,
-        stepDuration,
-        false,
-        safetyCheck.flagged,
-        safetyCheck.escalated,
-        output.confidence,
-      );
-
-      // 7. Store in memory
-      this.memory.set(`${agent.role}_output`, output.data, agent.role);
-      if (output.summary) {
-        this.memory.set(`${agent.role}_summary`, output.summary, agent.role);
-      }
-
-      // 8. Build step result
-      const stepResult: SwarmStepResult = {
-        agent,
-        input: stepInput,
-        output,
-        verification,
-        permission: permResult,
-        lineage,
-        escalated: safetyCheck.escalated,
-        escalationNotice: safetyCheck.escalationNotice,
-        durationMs: stepDuration,
-        creditsUsed,
-      };
-
-      steps.push(stepResult);
-
-      // Track escalations
-      if (safetyCheck.escalated) {
-        swarmEscalated = true;
-        if (safetyCheck.escalationNotice) {
-          escalationNotices.push(`${agent.name}: ${safetyCheck.escalationNotice}`);
         }
       }
     }
@@ -702,13 +629,14 @@ export class VerifiedSwarm {
     ).length;
 
     const synthesis = steps.find(s => s.agent.role === "synthesizer")?.output ?? null;
+    const budgetStatus = budget.getStatus();
 
     const swarmResult: SwarmResult = {
       sessionId: this.sessionId,
       query,
       steps,
       synthesis,
-      totalCreditsUsed: totalCredits,
+      totalCreditsUsed: budgetStatus.spent,
       totalDurationMs: Date.now() - startTime,
       escalated: swarmEscalated,
       escalationNotices,
@@ -719,6 +647,9 @@ export class VerifiedSwarm {
         flaggedSteps,
       },
       feedback: [],
+      budget: budgetStatus,
+      costBreakdown,
+      cacheStats: this.cache.getStats(),
     };
 
     // Self-improvement feedback loop (non-blocking, opt-in)
@@ -754,5 +685,174 @@ export class VerifiedSwarm {
       };
     }
     return context;
+  }
+
+  /** Execute a single agent with cost routing, caching, and budget enforcement */
+  private async executeAgent(
+    agent: SwarmAgent,
+    query: string,
+    steps: SwarmStepResult[],
+    budget: BudgetTracker,
+  ): Promise<{ step: SwarmStepResult; cost: StepCostRecord } | null> {
+    const stepStart = Date.now();
+    const toolName = agent.tool || `swarm_${agent.role}`;
+
+    // Cost estimate
+    const costEst = estimateStepCredits(agent.role, this.config.costMode);
+
+    // Budget check
+    if (!budget.canAfford(costEst.estimatedCredits)) {
+      budget.recordSkip();
+      return null;
+    }
+
+    // Build step input
+    const stepInput: SwarmStepInput = {
+      query,
+      context: this.buildContext(steps),
+      memory: this.memory,
+      previousSteps: steps,
+    };
+
+    // Permission check
+    const permResult = checkPermissions(toolName, { query, role: agent.role, sessionId: this.sessionId });
+    if (permResult.decision === "deny") {
+      budget.recordSkip();
+      return {
+        step: {
+          agent, input: stepInput,
+          output: { data: {}, summary: `Denied: ${permResult.reason}` },
+          permission: permResult, escalated: false,
+          durationMs: Date.now() - stepStart, creditsUsed: 0,
+        },
+        cost: {
+          role: agent.role, agent: agent.name, modelTier: costEst.modelTier,
+          estimatedCredits: 0, actualCredits: 0, cached: false, durationMs: Date.now() - stepStart,
+        },
+      };
+    }
+
+    // Cache check (skip for critic/synthesizer — they depend on prior steps)
+    const cacheKey = StepCache.buildKey(agent.role, query);
+    if (!["critic", "synthesizer", "verifier"].includes(agent.role)) {
+      const cached = this.cache.get(cacheKey);
+      if (cached) {
+        const cachedOutput: SwarmStepOutput = {
+          data: cached.data,
+          summary: String(cached.data.summary || ""),
+          confidence: cached.confidence ?? 70,
+          claims: extractClaims(cached.data),
+          creditsUsed: 0,
+        };
+        budget.recordSpend(0);
+        const dur = Date.now() - stepStart;
+        return {
+          step: {
+            agent, input: stepInput, output: cachedOutput,
+            permission: permResult, escalated: false,
+            durationMs: dur, creditsUsed: 0,
+          },
+          cost: {
+            role: agent.role, agent: agent.name, modelTier: costEst.modelTier,
+            estimatedCredits: costEst.estimatedCredits, actualCredits: 0,
+            cached: true, durationMs: dur,
+          },
+        };
+      }
+    }
+
+    // Execute step
+    const output: SwarmStepOutput = await (async (): Promise<SwarmStepOutput> => {
+      try {
+        if (agent.role === "critic") return runCritic(steps);
+        if (agent.role === "synthesizer") return runSynthesizer(query, steps);
+        return await executeTool(agent, stepInput, this.config.apiFn);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        const retries = agent.maxRetries ?? 1;
+        for (let attempt = 0; attempt < retries; attempt++) {
+          try {
+            if (agent.role === "critic") return runCritic(steps);
+            if (agent.role === "synthesizer") return runSynthesizer(query, steps);
+            return await executeTool(agent, stepInput, this.config.apiFn);
+          } catch { /* continue retrying */ }
+        }
+        recordToolCall(toolName, Date.now() - stepStart, true, false, false);
+        return {
+          data: { error: message },
+          summary: `${agent.name} failed: ${message}`,
+          confidence: 0,
+          creditsUsed: 0,
+        };
+      }
+    })();
+
+    // Apply cost-routed credits (override the raw creditsUsed with tier-based cost)
+    const actualCredits = output.creditsUsed ?? costEst.estimatedCredits;
+    budget.recordSpend(actualCredits);
+
+    // Cache the result for future runs
+    if (!["critic", "synthesizer", "verifier"].includes(agent.role)) {
+      this.cache.set(cacheKey, output.data, {
+        confidence: output.confidence,
+        ttlMs: this.config.cacheTtlMs,
+      });
+    }
+
+    // Auto-verification
+    let verification: SwarmStepResult["verification"] | undefined;
+    if (
+      this.config.enableAutoVerification &&
+      !["verifier", "critic", "synthesizer"].includes(agent.role) &&
+      output.claims?.length
+    ) {
+      const confidenceScore = output.confidence ?? 70;
+      verification = {
+        confidenceScore,
+        verificationStatus: confidenceScore >= 65 ? "verified"
+          : confidenceScore >= 40 ? "flagged"
+          : "low-confidence",
+        evidenceCount: (output.data.evidence_chain as unknown[] | undefined)?.length ?? 0,
+      };
+    }
+
+    // Output safety check + escalation
+    const safetyCheck = checkOutputSafety(
+      toolName, output.data,
+      { escalationThreshold: this.config.escalationThreshold },
+    );
+
+    // Decision lineage
+    const lineage = getDecisionLineage(toolName, { query, role: agent.role }, output.data);
+
+    // Record metrics
+    const stepDuration = Date.now() - stepStart;
+    recordToolCall(toolName, stepDuration, false, safetyCheck.flagged, safetyCheck.escalated, output.confidence);
+
+    // Store in memory
+    this.memory.set(`${agent.role}_output`, output.data, agent.role);
+    if (output.summary) {
+      this.memory.set(`${agent.role}_summary`, output.summary, agent.role);
+    }
+
+    return {
+      step: {
+        agent, input: stepInput, output, verification,
+        permission: permResult, lineage,
+        escalated: safetyCheck.escalated,
+        escalationNotice: safetyCheck.escalationNotice,
+        durationMs: stepDuration, creditsUsed: actualCredits,
+        cost: {
+          role: agent.role, agent: agent.name, modelTier: costEst.modelTier,
+          estimatedCredits: costEst.estimatedCredits, actualCredits,
+          cached: false, durationMs: stepDuration,
+        },
+      },
+      cost: {
+        role: agent.role, agent: agent.name, modelTier: costEst.modelTier,
+        estimatedCredits: costEst.estimatedCredits, actualCredits,
+        cached: false, durationMs: stepDuration,
+      },
+    };
   }
 }
