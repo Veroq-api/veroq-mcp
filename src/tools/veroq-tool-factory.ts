@@ -265,12 +265,14 @@ export function createVeroQTool<
       // 5. Apply size limit
       outputText = truncateOutput(outputText, maxOutputSize);
 
-      // 6. Post-execution safety check
+      // 6. Post-execution safety check + escalation
       const safetyCheck = checkOutputSafety(
         name,
         typeof result === "object" && result !== null ? result as Record<string, unknown> : {},
       );
-      if (safetyCheck.flagged) {
+      if (safetyCheck.escalated && safetyCheck.escalationNotice) {
+        outputText += `\n\n${safetyCheck.escalationNotice}`;
+      } else if (safetyCheck.flagged) {
         outputText += `\n\n⚠️ SAFETY FLAG: ${safetyCheck.reason}`;
       }
       if (permResult.highStakesTriggered) {

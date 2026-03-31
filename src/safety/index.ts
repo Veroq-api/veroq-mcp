@@ -6,6 +6,8 @@ export {
   resetPermissionContext,
   getAuditLog,
   clearAuditLog,
+  getFullAuditTrail,
+  getDecisionLineage,
   configureEnterprise,
   isHighStakesOutput,
   type ToolPermissionContext,
@@ -15,4 +17,6 @@ export {
   type PermissionResult,
   type AuditEntry,
   type EnterpriseConfig,
+  type DecisionLineage,
+  type RuleEvaluation,
 } from "./veroq-permission-engine.js";

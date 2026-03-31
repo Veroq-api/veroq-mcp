@@ -33,6 +33,8 @@ export {
   resetPermissionContext,
   getAuditLog,
   clearAuditLog,
+  getFullAuditTrail,
+  getDecisionLineage,
   configureEnterprise,
   type ToolPermissionContext,
   type PermissionMode,
@@ -40,5 +42,7 @@ export {
   type PermissionRule,
   type PermissionResult,
   type AuditEntry,
+  type DecisionLineage,
+  type RuleEvaluation,
   type EnterpriseConfig,
 } from "../safety/index.js";
