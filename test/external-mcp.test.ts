@@ -443,4 +443,49 @@ describe("external-mcp", () => {
     assert.ok(denyPatterns.some(p => p.startsWith("external_my-broker_")),
       "Deny patterns should be server-prefixed");
   });
+
+  // ── Enforcement Tests (verify rules actually block calls) ──
+
+  it("high-risk server actually denies dangerous tool calls", async () => {
+    const registry = new ExternalMcpRegistry(mockCallFn);
+    registry.registerServer(makeServer({
+      serverId: "risk-broker",
+      trustLevel: "high-risk",
+      allowedTools: ["get_positions", "execute_trade", "submit_order"],
+    }));
+
+    // execute_trade matches *execute* deny pattern → should be denied
+    const result = await registry.callTool("risk-broker", "execute_trade", {});
+    assert.equal(result.permission.decision, "deny", "execute_trade should be denied on high-risk server");
+    assert.equal(result.creditsUsed, 0);
+  });
+
+  it("write server flags dangerous tools for review", async () => {
+    const registry = new ExternalMcpRegistry(mockCallFn);
+    registry.registerServer(makeServer({
+      serverId: "write-api",
+      trustLevel: "write",
+      allowedTools: ["get_data", "submit_order"],
+    }));
+
+    // submit_order matches *order* review pattern → should be review
+    const result = await registry.callTool("write-api", "submit_order", {});
+    assert.equal(result.permission.decision, "review", "submit_order should need review on write server");
+    // But the call still executes (review = warning, not block)
+    assert.ok(result.data.status === "ok" || result.data.tool === "submit_order");
+  });
+
+  it("read-only server allows all tools without restrictions", async () => {
+    const registry = new ExternalMcpRegistry(mockCallFn);
+    registry.registerServer(makeServer({
+      serverId: "market-data",
+      trustLevel: "read-only",
+      allowedTools: ["get_quote", "get_trade_history"],
+    }));
+
+    // get_trade_history contains "trade" but read-only has no dangerous patterns
+    const result = await registry.callTool("market-data", "get_trade_history", {});
+    assert.equal(result.permission.decision, "allow");
+    assert.equal(result.data.status, "ok");
+  });
 });

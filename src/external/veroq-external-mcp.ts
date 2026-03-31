@@ -450,12 +450,18 @@ export class ExternalMcpRegistry {
       };
     }
 
-    // 2. Permission engine check (uses prefixed name for domain rules)
-    const permResult = checkPermissions(prefixedName, {
-      ...sanitizeForAudit(params),
-      _serverId: serverId,
-      _trustLevel: server.trustLevel,
-    });
+    // 2. Permission engine check (merges server-specific rules with global context)
+    // Only override global rules when the server has its own; otherwise let global rules apply.
+    const serverDenyRules = (server.permissionRules?.denied || []).map(p => ({ pattern: p }));
+    const serverReviewRules = (server.permissionRules?.review || []).map(p => ({ pattern: p }));
+    const permOverrides: Record<string, unknown> = {};
+    if (serverDenyRules.length > 0) permOverrides.alwaysDenyRules = serverDenyRules;
+    if (serverReviewRules.length > 0) permOverrides.alwaysAskRules = serverReviewRules;
+    const permResult = checkPermissions(
+      prefixedName,
+      { ...sanitizeForAudit(params), _serverId: serverId, _trustLevel: server.trustLevel },
+      Object.keys(permOverrides).length > 0 ? permOverrides as any : undefined,
+    );
 
     if (permResult.decision === "deny") {
       return {
