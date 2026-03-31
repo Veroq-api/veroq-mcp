@@ -282,57 +282,202 @@ EXAMPLE: { "tickers": "NVDA, AMD, INTC" }`,
 
   createVeroQTool(server, {
     name: "veroq_tool_search",
-    description: `Search for the right VEROQ tool by describing what you need. Returns matching tools with usage guidance.
+    description: `Context-aware tool discovery — find the right VeroQ tool by describing what you need.
 
-WHEN TO USE: When you're not sure which tool to use. Describe what you want to accomplish and this returns the best-matching tools with descriptions, cost, and examples.
+WHEN TO USE: When you're not sure which tool to use, or need to explore available capabilities for a specific domain. Filters by permissions, vertical, cost, and trust level. Returns only tools you're allowed to call.
 
-RETURNS: List of matching tools sorted by relevance with name, description, category, cost, and when-to-use guidance.
+RETURNS: Ranked list of matching tools with: name, category, cost, whenToUse snippet, returnsSnippet, isExternal flag, isHighLevel flag, permissionStatus, and relevance score.
 
 COST: 0 credits (local search, no API call).
 
-EXAMPLE: { "query": "I need to check if a claim about earnings is true" }
-EXAMPLE: { "query": "find oversold stocks" }
-EXAMPLE: { "query": "crypto prices" }`,
+EXAMPLE: { "query": "analyze NVDA stock" }
+EXAMPLE: { "query": "verify a claim", "vertical": "finance" }
+EXAMPLE: { "query": "crypto prices", "maxCost": 2 }
+EXAMPLE: { "query": "risk assessment", "category": "trading" }`,
     inputSchema: z.object({
       query: z.string().describe("Describe what you want to accomplish"),
       limit: z.number().optional().describe("Max results (default 5)"),
+      vertical: z.string().optional().describe("Filter to tools relevant to a vertical: finance, legal, research, compliance"),
+      category: z.string().optional().describe("Filter by tool category: intelligence, trading, verification, market_data, discovery, swarm, feedback, runtime, external"),
+      maxCost: z.number().optional().describe("Max credit cost per call (e.g., 2 to only show cheap tools)"),
+      includeExternal: z.boolean().optional().describe("Include registered external tools (default: true)"),
     }),
-    execute: async ({ query, limit }) => {
+    execute: async ({ query, limit, vertical, category: catFilter, maxCost, includeExternal }) => {
       const { getRegisteredTools } = await import("./veroq-tool-factory.js");
-      const all = getRegisteredTools();
+      const { checkPermissions } = await import("../safety/index.js");
+      const { getExternalRegistry } = await import("../external/index.js");
+
       const q = query.toLowerCase();
+      const words = q.split(/\s+/).filter(w => w.length >= 2);
       const maxResults = limit || 5;
 
-      // Score each tool by keyword match
-      const scored = all.map(tool => {
-        let score = 0;
-        const text = `${tool.name} ${tool.description || ""} ${tool.category || ""}`.toLowerCase();
-        for (const word of q.split(/\s+/)) {
-          if (word.length < 2) continue;
-          if (text.includes(word)) score += 10;
-          if (tool.name.includes(word)) score += 20;
-        }
-        // Boost high-level tools
-        if (tool.name.includes("analyze_ticker") || tool.name.includes("verify_market") ||
-            tool.name.includes("trading_signal") || tool.name.includes("comprehensive") ||
-            tool.name.includes("compare_tickers")) {
-          score += 5;
-        }
-        return { ...tool, score };
-      }).filter(t => t.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, maxResults);
+      // ── Synonym expansion for common queries ──
+      const SYNONYMS: Record<string, string[]> = {
+        price: ["ticker_price", "candles", "market_summary"],
+        verify: ["verify", "verify_market_claim", "contradictions"],
+        analyze: ["analyze_ticker", "full", "ticker_analysis"],
+        earnings: ["earnings", "filings", "analysts"],
+        compare: ["compare", "compare_tickers", "correlation"],
+        screen: ["screener", "screener_presets", "trading_signal"],
+        insider: ["insider", "congress", "institutions"],
+        crypto: ["crypto", "crypto_chart", "defi", "defi_protocol"],
+        economy: ["economy", "economy_indicator", "forex", "commodities"],
+        risk: ["risk_assessor", "alerts", "verified_swarm"],
+        news: ["feed", "search", "ticker_news", "trending"],
+      };
+      const expandedTerms = new Set(words);
+      for (const w of words) {
+        const syns = SYNONYMS[w];
+        if (syns) syns.forEach(s => expandedTerms.add(s));
+      }
 
-      return scored;
+      // ── Vertical kit awareness ──
+      let verticalCoreTools: Set<string> | null = null;
+      let verticalDeniedTools: Set<string> | null = null;
+      if (vertical) {
+        try {
+          const { getVerticalKit } = await import("../runtime/vertical-kits.js");
+          const kit = getVerticalKit(vertical as any);
+          verticalCoreTools = new Set(kit.coreTools);
+          verticalDeniedTools = new Set(kit.deniedTools);
+        } catch { /* vertical not found, skip filtering */ }
+      }
+
+      // ── Score internal tools ──
+      const all = getRegisteredTools();
+      type ScoredTool = {
+        name: string; description: string; category: string; credits: number;
+        score: number; whenToUse: string; returnsSnippet: string;
+        isExternal: boolean; isHighLevel: boolean; permissionStatus: string;
+        verificationSupport: boolean;
+      };
+
+      const scored: ScoredTool[] = [];
+
+      for (const tool of all) {
+        const desc = (tool.description || "").toLowerCase();
+        const fullText = `${tool.name} ${desc} ${tool.category || ""}`;
+
+        // Category filter
+        if (catFilter && tool.category && tool.category !== catFilter) continue;
+        // Cost filter
+        if (maxCost != null && tool.credits != null && tool.credits > maxCost) continue;
+        // Vertical denied filter
+        if (verticalDeniedTools?.has(tool.name)) continue;
+
+        // Score
+        let score = 0;
+        for (const w of expandedTerms) {
+          if (fullText.includes(w)) score += 10;
+          if (tool.name.includes(w)) score += 25;
+        }
+
+        // Boost high-level tools
+        const isHL = ["analyze_ticker", "verify_market", "trading_signal", "comprehensive",
+          "compare_tickers", "verified_swarm", "create_runtime"].some(k => tool.name.includes(k));
+        if (isHL) score += 8;
+
+        // Boost vertical core tools
+        if (verticalCoreTools?.has(tool.name)) score += 12;
+
+        // Boost verification-related tools
+        const hasVerify = desc.includes("verify") || desc.includes("evidence") || desc.includes("fact-check");
+        if (hasVerify && q.includes("verify")) score += 15;
+
+        if (score <= 0) continue;
+
+        // Extract WHEN TO USE and RETURNS snippets from standardized descriptions
+        const rawDesc = tool.description || "";
+        const whenMatch = rawDesc.match(/WHEN TO USE:\s*(.+?)(?:\n|RETURNS|COST|$)/s);
+        const returnsMatch = rawDesc.match(/RETURNS:\s*(.+?)(?:\n|COST|EXAMPLE|$)/s);
+
+        // Permission check (lightweight — just check, don't log)
+        let permStatus = "allowed";
+        try {
+          const perm = checkPermissions(tool.name, {});
+          if (perm.decision === "deny") permStatus = "denied";
+          else if (perm.decision === "review") permStatus = "review";
+        } catch { /* ignore */ }
+
+        // Skip denied tools unless explicitly searching
+        if (permStatus === "denied" && !q.includes("denied")) continue;
+
+        scored.push({
+          name: tool.name,
+          description: rawDesc.split("\n")[0] || rawDesc.slice(0, 120),
+          category: tool.category || "general",
+          credits: tool.credits ?? 0,
+          score,
+          whenToUse: whenMatch?.[1]?.trim().slice(0, 200) || "",
+          returnsSnippet: returnsMatch?.[1]?.trim().slice(0, 200) || "",
+          isExternal: false,
+          isHighLevel: isHL,
+          permissionStatus: permStatus,
+          verificationSupport: hasVerify,
+        });
+      }
+
+      // ── Score external tools ──
+      if (includeExternal !== false) {
+        try {
+          const registry = getExternalRegistry();
+          for (const ext of registry.getRegisteredTools()) {
+            const extText = `${ext.prefixedName} ${ext.toolName} ${ext.serverId}`.toLowerCase();
+            let extScore = 0;
+            for (const w of expandedTerms) {
+              if (extText.includes(w)) extScore += 10;
+            }
+            if (extScore > 0) {
+              let permStatus = "allowed";
+              try {
+                const perm = checkPermissions(ext.prefixedName, {});
+                if (perm.decision === "deny") permStatus = "denied";
+                else if (perm.decision === "review") permStatus = "review";
+              } catch { /* ignore */ }
+
+              if (permStatus !== "denied") {
+                scored.push({
+                  name: ext.prefixedName,
+                  description: `External tool: ${ext.toolName} from ${ext.serverId}`,
+                  category: "external",
+                  credits: 1,
+                  score: extScore,
+                  whenToUse: `Call ${ext.toolName} on external server ${ext.serverId} (trust: ${ext.trustLevel})`,
+                  returnsSnippet: "External API response proxied through VeroQ security stack",
+                  isExternal: true,
+                  isHighLevel: false,
+                  permissionStatus: permStatus,
+                  verificationSupport: false,
+                });
+              }
+            }
+          }
+        } catch { /* no external registry */ }
+      }
+
+      return scored.sort((a, b) => b.score - a.score).slice(0, maxResults);
     },
     display: (result) => {
-      const tools = result as Array<{ name: string; description?: string; category?: string; credits?: number }>;
-      if (!tools.length) return "No matching tools found. Try a different description.";
+      const tools = result as Array<{
+        name: string; description: string; category: string; credits: number;
+        score: number; whenToUse: string; isExternal: boolean; isHighLevel: boolean;
+        permissionStatus: string; verificationSupport: boolean;
+      }>;
+      if (!tools.length) return "No matching tools found. Try a different description or remove filters.";
 
       const parts = [`Found ${tools.length} matching tool(s):\n`];
       for (const t of tools) {
-        parts.push(`**${t.name}** (${t.category || "general"}${t.credits ? `, ${t.credits}cr` : ""})`);
-        if (t.description) parts.push(`  ${t.description.slice(0, 150)}`);
+        const badges: string[] = [];
+        if (t.isHighLevel) badges.push("high-level");
+        if (t.isExternal) badges.push("external");
+        if (t.verificationSupport) badges.push("verified");
+        if (t.permissionStatus === "review") badges.push("needs-review");
+        const badgeStr = badges.length > 0 ? ` [${badges.join(", ")}]` : "";
+        const costStr = t.credits === 0 ? "free" : `${t.credits}cr`;
+
+        parts.push(`**${t.name}** (${t.category}, ${costStr})${badgeStr}`);
+        if (t.whenToUse) parts.push(`  → ${t.whenToUse.slice(0, 150)}`);
+        else if (t.description) parts.push(`  ${t.description.slice(0, 150)}`);
         parts.push("");
       }
       return parts.join("\n");
