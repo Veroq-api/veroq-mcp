@@ -296,6 +296,35 @@ describe("external-mcp", () => {
     assert.ok(!lineageStr.includes("secret-api-key-12345"));
   });
 
+  it("getServer redacts credentials", () => {
+    const registry = new ExternalMcpRegistry(mockCallFn);
+    registry.registerServer(makeServer({
+      auth: { type: "api-key", credential: "super-secret-key" },
+    }));
+
+    const server = registry.getServer("test-provider");
+    assert.ok(server);
+    assert.equal(server!.auth.credential, "***");
+  });
+
+  it("rejects tool names with path traversal characters", async () => {
+    const registry = new ExternalMcpRegistry(mockCallFn);
+    registry.registerServer(makeServer({ allowedTools: ["*"] }));
+
+    const result = await registry.callTool("test-provider", "../../admin/delete", {});
+    assert.ok(String(result.data.error).includes("Invalid tool name"));
+  });
+
+  it("denied-tools result has valid lineage with rulesEvaluated", async () => {
+    const registry = new ExternalMcpRegistry(mockCallFn);
+    registry.registerServer(makeServer());
+
+    const result = await registry.callTool("test-provider", "not_allowed", {});
+    assert.ok(result.lineage.rulesEvaluated);
+    assert.ok(Array.isArray(result.lineage.rulesEvaluated));
+    assert.equal(result.lineage.finalDecision, "deny");
+  });
+
   // ── Module-Level API ──
 
   it("module-level registerExternalMcpServer works", async () => {

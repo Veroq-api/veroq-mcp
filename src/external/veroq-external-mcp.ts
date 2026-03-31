@@ -146,8 +146,17 @@ class ExternalCache {
   private misses = 0;
 
   static buildKey(serverId: string, toolName: string, params: Record<string, unknown>): string {
-    const paramStr = JSON.stringify(params, Object.keys(params).sort()).slice(0, 200);
-    return `${serverId}:${toolName}:${paramStr}`;
+    // Stable serialization — sort keys recursively for consistent cache keys
+    const stable = JSON.stringify(params, (_key, value) => {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        return Object.keys(value).sort().reduce<Record<string, unknown>>((sorted, k) => {
+          sorted[k] = (value as Record<string, unknown>)[k];
+          return sorted;
+        }, {});
+      }
+      return value;
+    }).slice(0, 300);
+    return `${serverId}:${toolName}:${stable}`;
   }
 
   get(key: string): CachedResponse | undefined {
@@ -242,9 +251,14 @@ export class ExternalMcpRegistry {
     return this.servers.delete(serverId);
   }
 
-  /** Get a registered server config */
-  getServer(serverId: string): ExternalServerConfig | undefined {
-    return this.servers.get(serverId);
+  /** Get a registered server config (credentials redacted) */
+  getServer(serverId: string): (Omit<ExternalServerConfig, "auth"> & { auth: Omit<ExternalAuthConfig, "credential"> & { credential?: "***" } }) | undefined {
+    const server = this.servers.get(serverId);
+    if (!server) return undefined;
+    return {
+      ...server,
+      auth: { ...server.auth, credential: server.auth.credential ? "***" : undefined },
+    };
   }
 
   /** Get all registered server IDs */
@@ -312,6 +326,17 @@ export class ExternalMcpRegistry {
     const prefixedName = `${EXTERNAL_PREFIX}${serverId}_${toolName}`;
     const metrics = this.metrics.get(serverId)!;
 
+    // 0. Validate tool name (prevent path traversal in URL construction)
+    if (!/^[a-zA-Z0-9_-]+$/.test(toolName)) {
+      return {
+        serverId, toolName, prefixedToolName: prefixedName,
+        data: { error: `Invalid tool name "${toolName}" — only alphanumeric, hyphens, and underscores allowed` },
+        permission: { decision: "deny", reason: "Invalid tool name", highStakesTriggered: false, escalated: false, lineage: { toolName: prefixedName, input: {}, rulesEvaluated: [], confidenceFactors: {}, finalDecision: "deny", finalReason: "Invalid tool name", escalated: false, timestamp: new Date().toISOString(), durationMs: 0 } as DecisionLineage },
+        lineage: { toolName: prefixedName, input: {}, rulesEvaluated: [], confidenceFactors: {}, finalDecision: "deny", finalReason: "Invalid tool name", escalated: false, timestamp: new Date().toISOString(), durationMs: 0 } as DecisionLineage,
+        escalated: false, cached: false, durationMs: Date.now() - startTime, creditsUsed: 0, rateLimited: false,
+      };
+    }
+
     // 1. Verify tool is in allowed list
     const isAllowed = server.allowedTools.some(pattern => {
       if (pattern === toolName) return true;
@@ -321,11 +346,18 @@ export class ExternalMcpRegistry {
       return false;
     });
     if (!isAllowed) {
+      const denyLineage: DecisionLineage = {
+        toolName: prefixedName, input: sanitizeForAudit(params),
+        rulesEvaluated: [{ ruleType: "deny", pattern: "allowed-tools-list", matched: true, result: "deny" }],
+        confidenceFactors: {}, finalDecision: "deny",
+        finalReason: "Tool not in allowed list", escalated: false,
+        timestamp: new Date().toISOString(), durationMs: Date.now() - startTime,
+      };
       return {
         serverId, toolName, prefixedToolName: prefixedName,
         data: { error: `Tool "${toolName}" is not in the allowed list for server "${serverId}"` },
-        permission: { decision: "deny", reason: "Tool not in allowed list", highStakesTriggered: false, escalated: false, lineage: {} as DecisionLineage },
-        lineage: {} as DecisionLineage,
+        permission: { decision: "deny", reason: "Tool not in allowed list", highStakesTriggered: false, escalated: false, lineage: denyLineage },
+        lineage: denyLineage,
         escalated: false, cached: false, durationMs: Date.now() - startTime, creditsUsed: 0, rateLimited: false,
       };
     }
@@ -362,6 +394,7 @@ export class ExternalMcpRegistry {
     const rateLimitResult = this.rateLimiter.check(serverId, rateLimit);
     if (!rateLimitResult.allowed) {
       metrics.errors++;
+      metrics.totalCalls++;
       return {
         serverId, toolName, prefixedToolName: prefixedName,
         data: { error: `Rate limit exceeded for server "${serverId}" (${rateLimit}/min)` },
