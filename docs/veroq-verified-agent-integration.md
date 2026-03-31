@@ -182,7 +182,10 @@ All endpoints accept `?period=24h|7d|30d` parameter.
 | `test/observability.test.ts` | 8 tests — metrics recording, summary, rates |
 | `src/swarm/veroq-verified-swarm.ts` | Verified Swarm — multi-agent workflows with auto-verification |
 | `src/swarm/index.ts` | Swarm module barrel export |
-| `test/verified-swarm.test.ts` | 18 tests — creation, execution, verification, escalation, memory, budget |
+| `test/verified-swarm.test.ts` | 22 tests — creation, execution, verification, escalation, memory, budget |
+| `src/feedback/veroq-feedback-loop.ts` | Feedback loop — flagging, web search fallback, pipeline routing |
+| `src/feedback/index.ts` | Feedback module barrel export |
+| `test/feedback-loop.test.ts` | 17 tests — flagging, web search, pipeline, privacy, metrics |
 | `server.ts` | Main MCP server with 52 tools (unchanged) |
 
 ### TradingAgents-Pro repo (demo)
@@ -359,6 +362,116 @@ const result = await swarm.run("Is now a good time to invest in semiconductors?"
 | Enterprise audit trail for a complex decision | **Verified Swarm** with `enterpriseId` |
 | Automated trading pipeline with safety gates | **Verified Swarm** with `escalationThreshold: 70` |
 
+### 6. Self-Improvement Feedback Loop (`src/feedback/veroq-feedback-loop.ts`)
+
+Closed-loop system that automatically flags low-quality outputs and enriches them via web search fallback and Polaris pipeline integration.
+
+**Fully opt-in** (`enableSelfImprovement: false` by default). Never affects real-time performance — all feedback collection is non-blocking.
+
+#### How it works
+
+```
+Swarm Run → Analyze Each Step → Flag Issues → Web Search Fallback → Pipeline Routing
+     │                │                │               │                   │
+     │         Low confidence?    ┌────┴────┐    Fresh sources?      logSearchGap()
+     │         Contradicted?      │ Flagged │    Enrich entry        → pipeline cron
+     │         Escalated?         │  Entry  │         │              → self-learn job
+     │         Data gap?          └────┬────┘    ┌────┴────┐         → markGapCovered()
+     │                                 │         │ Enriched │
+     │                                 └─────────┴──────────┘
+     └─── result.feedback: FeedbackEntry[]
+```
+
+**Flagging triggers:**
+- Low confidence (<`feedbackThreshold`, default 70)
+- Contradicted verification verdicts
+- Escalated high-stakes outputs
+- Data gap indicators ("no results found", "unverifiable", etc.)
+- Low-confidence verification status
+
+**Web search fallback:** When gaps are detected and `enableWebSearchFallback` is true, the loop performs a web search to gather fresh sources. Results are attached to the feedback entry and can be used for re-evaluation.
+
+**Pipeline integration:** When `autoRouteToPipeline` is true, flagged entries (with web search enrichment if available) are routed to `logSearchGap()` → pipeline cron → `self_learn_jobs` → brief generation → `markGapCovered()`.
+
+**Privacy:** All feedback entries are sanitized — SSN-like numbers, email addresses, and card numbers are replaced with `[REDACTED]`.
+
+#### Enable in Swarm
+
+```typescript
+const swarm = createVerifiedSwarm({
+  roles: ["planner", "researcher", "verifier", "critic", "synthesizer"],
+  enableSelfImprovement: true,       // opt-in
+  feedbackThreshold: 70,             // flag below this confidence
+  enableWebSearchFallback: true,     // web search on data gaps
+  autoRouteToPipeline: false,        // manual review before pipeline
+  apiFn: myApiFunction,
+});
+
+const result = await swarm.run("Analyze NVDA");
+console.log(result.feedback);       // FeedbackEntry[]
+```
+
+#### Enable via Enterprise Config
+
+```typescript
+configureEnterprise({
+  enterpriseId: "acme-capital",
+  enableSelfImprovement: true,
+  feedbackThreshold: 65,
+  autoRouteToPipeline: true,
+  enableWebSearchFallback: true,
+});
+```
+
+#### Manual Feedback (MCP Tool)
+
+```
+Tool: veroq_process_feedback
+Input: { "action": "submit", "sessionId": "swarm_123", "query": "NVDA analysis", "reason": "data_gap", "detail": "Missing insider data" }
+```
+
+#### SDK Usage
+
+```typescript
+// TypeScript
+await client.submitFeedback({
+  sessionId: result.sessionId,
+  query: "NVDA analysis",
+  reason: "low_confidence",
+  detail: "RSI data was stale",
+});
+```
+
+```python
+# Python
+client.submit_feedback(
+    session_id=result["session_id"],
+    query="NVDA analysis",
+    reason="low_confidence",
+    detail="RSI data was stale",
+)
+```
+
+#### Observability
+
+Feedback metrics are exposed via `getFeedbackMetrics()`:
+- `totalFeedback` — total entries collected
+- `byReason` — breakdown by flag type
+- `webSearchFallbacks` — how many gaps triggered web search
+- `webSearchSuccessRate` — percentage that found fresh sources
+- `pipelineRouted` — entries sent to enrichment pipeline
+- `avgFlaggedConfidence` — average confidence of flagged outputs
+- `pendingCount` / `resolvedCount` — queue status
+
+#### Long-term Impact
+
+Over time, the feedback loop drives:
+1. **Rising average confidence** — gaps get filled, brief coverage expands
+2. **Fewer data gaps** — `search_gaps` table tracks demand, pipeline enriches
+3. **Better source coverage** — web search fallback surfaces sources the pipeline missed
+4. **Declining escalation rate** — enriched data reduces false positives
+5. **Enterprise trust metrics** — audit trail shows improvement trajectory
+
 ## Team Rollout Checklist
 
 - [ ] Update SDK docs (Python, TypeScript) with verification metadata examples
@@ -384,7 +497,8 @@ const result = await swarm.run("Is now a good time to invest in semiconductors?"
 | Observability | 8 | ✓ |
 | Integration | 10 | ✓ |
 | High-Level Tools | 8 | ✓ |
-| Verified Swarm | 18 | ✓ |
+| Verified Swarm | 22 | ✓ |
+| Feedback Loop | 17 | ✓ |
 | Agent Coordinator | 22 | ✓ |
 | Fact Checker | 16 | ✓ |
-| **Total** | **103 (MCP) + 38 (demo)** | **All passing** |
+| **Total** | **124 (MCP) + 38 (demo)** | **All passing** |

@@ -17,6 +17,12 @@ import {
   type EnterpriseConfig,
 } from "../safety/index.js";
 import { recordToolCall } from "../observability/index.js";
+import {
+  collectSwarmFeedback,
+  type FeedbackConfig,
+  type FeedbackEntry,
+  type WebSearchFallbackResult,
+} from "../feedback/index.js";
 
 // ── Types ──
 
@@ -65,6 +71,18 @@ export interface SwarmConfig {
   memoryLimit?: number;
   /** API function for making VeroQ API calls */
   apiFn?: (method: "GET" | "POST", path: string, params?: Record<string, unknown>, body?: unknown) => Promise<unknown>;
+  /** Enable self-improvement feedback loop (default: false — opt-in for safety) */
+  enableSelfImprovement?: boolean;
+  /** Confidence threshold below which outputs are flagged for feedback (default: 70) */
+  feedbackThreshold?: number;
+  /** Automatically route flagged items to the pipeline (default: false) */
+  autoRouteToPipeline?: boolean;
+  /** Use web search as fallback when data gaps detected (default: true) */
+  enableWebSearchFallback?: boolean;
+  /** Web search function (injected for testability) */
+  webSearchFn?: (query: string) => Promise<WebSearchFallbackResult>;
+  /** Pipeline routing function (injected) */
+  pipelineRouteFn?: (entry: FeedbackEntry) => Promise<Record<string, unknown>>;
 }
 
 export interface SwarmStepInput {
@@ -115,6 +133,8 @@ export interface SwarmResult {
     avgConfidence: number;
     flaggedSteps: number;
   };
+  /** Feedback entries collected during this run (only if enableSelfImprovement is true) */
+  feedback: FeedbackEntry[];
 }
 
 // ── Shared Memory ──
@@ -488,7 +508,7 @@ export function createVerifiedSwarm(config: SwarmConfig = {}): VerifiedSwarm {
 
 export class VerifiedSwarm {
   readonly sessionId: string;
-  readonly config: Required<Pick<SwarmConfig, "enableAutoVerification" | "escalationThreshold" | "creditBudget" | "memoryLimit">> & SwarmConfig;
+  readonly config: Required<Pick<SwarmConfig, "enableAutoVerification" | "escalationThreshold" | "creditBudget" | "memoryLimit" | "enableSelfImprovement" | "feedbackThreshold" | "autoRouteToPipeline" | "enableWebSearchFallback">> & SwarmConfig;
   private agents: SwarmAgent[];
   private memory: SwarmMemory;
 
@@ -500,6 +520,10 @@ export class VerifiedSwarm {
       escalationThreshold: config.escalationThreshold ?? 80,
       creditBudget: config.creditBudget ?? 50,
       memoryLimit: config.memoryLimit ?? 50,
+      enableSelfImprovement: config.enableSelfImprovement ?? false,
+      feedbackThreshold: config.feedbackThreshold ?? 70,
+      autoRouteToPipeline: config.autoRouteToPipeline ?? false,
+      enableWebSearchFallback: config.enableWebSearchFallback ?? true,
     };
     this.agents = resolveAgents(this.config);
     this.memory = new SwarmMemory(this.config.memoryLimit);
@@ -679,7 +703,7 @@ export class VerifiedSwarm {
 
     const synthesis = steps.find(s => s.agent.role === "synthesizer")?.output ?? null;
 
-    return {
+    const swarmResult: SwarmResult = {
       sessionId: this.sessionId,
       query,
       steps,
@@ -694,7 +718,26 @@ export class VerifiedSwarm {
         avgConfidence: Math.round(avgConf),
         flaggedSteps,
       },
+      feedback: [],
     };
+
+    // Self-improvement feedback loop (non-blocking, opt-in)
+    if (this.config.enableSelfImprovement) {
+      try {
+        swarmResult.feedback = await collectSwarmFeedback(swarmResult, {
+          enableSelfImprovement: true,
+          feedbackThreshold: this.config.feedbackThreshold,
+          autoRouteToPipeline: this.config.autoRouteToPipeline,
+          enableWebSearchFallback: this.config.enableWebSearchFallback,
+          webSearchFn: this.config.webSearchFn,
+          pipelineRouteFn: this.config.pipelineRouteFn,
+        });
+      } catch {
+        // Feedback collection must never break the swarm
+      }
+    }
+
+    return swarmResult;
   }
 
   /** Build accumulated context from previous steps */

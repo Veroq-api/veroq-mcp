@@ -496,6 +496,14 @@ export interface EnterpriseConfig {
   escalationPauses?: boolean;
   /** Session ID for grouping audit entries */
   sessionId?: string;
+  /** Enable self-improvement feedback loop for swarms (default: false) */
+  enableSelfImprovement?: boolean;
+  /** Confidence threshold for flagging feedback (default: 70) */
+  feedbackThreshold?: number;
+  /** Auto-route flagged items to pipeline (default: false) */
+  autoRouteToPipeline?: boolean;
+  /** Enable web search fallback for data gaps (default: true) */
+  enableWebSearchFallback?: boolean;
 }
 
 export function configureEnterprise(config: EnterpriseConfig): void {

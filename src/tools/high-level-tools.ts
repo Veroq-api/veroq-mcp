@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createVeroQTool } from "./veroq-tool-factory.js";
 import { createVerifiedSwarm, type SwarmRole } from "../swarm/index.js";
+import { submitFeedback, getFeedbackQueue, getFeedbackMetrics, type FeedbackReason } from "../feedback/index.js";
 
 type ApiFn = (
   method: "GET" | "POST",
@@ -420,5 +421,78 @@ EXAMPLE: { "query": "Is now a good time to invest in semiconductors?", "escalati
     annotations: { readOnlyHint: true, openWorldHint: true },
     category: "swarm",
     credits: 15,
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // 8. PROCESS FEEDBACK — submit or query the feedback loop
+  // ═══════════════════════════════════════════════════════════
+
+  createVeroQTool(server, {
+    name: "veroq_process_feedback",
+    description: `Submit feedback or query the self-improvement feedback queue.
+
+WHEN TO USE: After a swarm run, submit corrections, flag inaccuracies, or query pending feedback. Also used to check feedback metrics (web search fallback rate, pipeline routing stats).
+
+ACTIONS:
+- "submit": Submit new feedback about a query or claim
+- "query": Get pending feedback entries
+- "metrics": Get feedback loop metrics
+
+COST: 0 credits (local operation).
+
+EXAMPLE: { "action": "submit", "sessionId": "swarm_123", "query": "NVDA analysis", "reason": "low_confidence", "detail": "Missing insider data" }
+EXAMPLE: { "action": "metrics" }`,
+    inputSchema: z.object({
+      action: z.enum(["submit", "query", "metrics"]).describe("Action: submit, query, or metrics"),
+      sessionId: z.string().optional().describe("Session ID (required for submit)"),
+      query: z.string().optional().describe("Original query (for submit)"),
+      reason: z.enum(["low_confidence", "contradicted", "escalated", "data_gap", "verification_failed", "user_submitted", "manual"]).optional()
+        .describe("Feedback reason (for submit)"),
+      detail: z.string().optional().describe("Detail description (for submit)"),
+      claims: z.array(z.string()).optional().describe("Flagged claims (for submit)"),
+      status: z.enum(["pending", "enriched", "routed", "resolved", "dismissed"]).optional().describe("Filter by status (for query)"),
+      limit: z.number().optional().describe("Max results (for query, default 20)"),
+    }),
+    execute: async ({ action, sessionId, query: feedbackQuery, reason, detail, claims, status, limit }) => {
+      if (action === "submit") {
+        if (!sessionId || !feedbackQuery || !reason || !detail) {
+          return { error: "submit requires sessionId, query, reason, and detail" };
+        }
+        const entry = submitFeedback({
+          sessionId,
+          query: feedbackQuery,
+          reason: reason as FeedbackReason,
+          detail,
+          claims,
+        });
+        return { status: "ok", feedbackId: entry.id, entry };
+      }
+      if (action === "query") {
+        const entries = getFeedbackQueue({
+          sessionId,
+          status: status as any,
+          limit: limit || 20,
+        });
+        return { status: "ok", count: entries.length, entries };
+      }
+      if (action === "metrics") {
+        return { status: "ok", metrics: getFeedbackMetrics() };
+      }
+      return { error: `Unknown action: ${action}` };
+    },
+    display: (result) => {
+      const d = result as Record<string, unknown>;
+      if (d.error) return `Error: ${d.error}`;
+      if (d.metrics) {
+        const m = d.metrics as Record<string, unknown>;
+        return `Feedback Metrics:\n  Total: ${m.totalFeedback}\n  Web search fallbacks: ${m.webSearchFallbacks} (${m.webSearchSuccessRate}% success)\n  Pipeline routed: ${m.pipelineRouted}\n  Avg flagged confidence: ${m.avgFlaggedConfidence}\n  Pending: ${m.pendingCount} | Resolved: ${m.resolvedCount}`;
+      }
+      if (d.feedbackId) return `Feedback submitted: ${d.feedbackId}`;
+      if (d.count != null) return `${d.count} feedback entries found`;
+      return JSON.stringify(d, null, 2);
+    },
+    annotations: { readOnlyHint: false },
+    category: "feedback",
+    credits: 0,
   });
 }

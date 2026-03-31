@@ -60,3 +60,17 @@ export {
   type SwarmResult,
   type SwarmMemoryEntry,
 } from "../swarm/index.js";
+
+export {
+  collectSwarmFeedback,
+  submitFeedback,
+  getFeedbackQueue,
+  resolveFeedback,
+  getFeedbackMetrics,
+  resetFeedback,
+  type FeedbackEntry,
+  type FeedbackConfig,
+  type FeedbackReason,
+  type FeedbackMetrics,
+  type WebSearchFallbackResult,
+} from "../feedback/index.js";
