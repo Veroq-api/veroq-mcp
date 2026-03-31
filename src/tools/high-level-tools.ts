@@ -8,6 +8,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createVeroQTool } from "./veroq-tool-factory.js";
+import { createVerifiedSwarm } from "../swarm/index.js";
 
 type ApiFn = (
   method: "GET" | "POST",
@@ -336,5 +337,88 @@ EXAMPLE: { "query": "crypto prices" }`,
     annotations: { readOnlyHint: true },
     category: "discovery",
     credits: 0,
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // 7. VERIFIED SWARM — multi-agent financial workflow with
+  //    automatic verification, safety, and decision lineage
+  // ═══════════════════════════════════════════════════════════
+
+  createVeroQTool(server, {
+    name: "veroq_run_verified_swarm",
+    description: `Run a multi-agent verified financial analysis workflow.
+
+WHEN TO USE: When you need a comprehensive, multi-perspective analysis — not just a single data point. The swarm coordinates 5 agents (planner, researcher, verifier, critic, synthesizer) that each contribute a different angle, then auto-verifies claims and synthesizes the result.
+
+RETURNS: Step-by-step results from each agent with verification metadata, escalation notices, decision lineage, and a final synthesis. Includes verification summary (steps verified, avg confidence, flagged steps).
+
+COST: ~15-25 credits depending on pipeline depth. Set creditBudget to cap spending.
+
+PIPELINE: planner (market overview) → researcher (deep analysis) → verifier (fact-check claims) → critic (devil's advocate) → synthesizer (final output with risks).
+
+EXAMPLE: { "query": "Analyze NVDA for a long position", "roles": ["planner", "researcher", "verifier", "critic", "synthesizer"] }
+EXAMPLE: { "query": "Is now a good time to invest in semiconductors?", "escalationThreshold": 70 }`,
+    inputSchema: z.object({
+      query: z.string().describe("The financial question or analysis request"),
+      roles: z.array(z.enum(["planner", "researcher", "verifier", "critic", "risk_assessor", "synthesizer"])).optional()
+        .describe("Agent roles to include (default: planner, researcher, verifier, critic, synthesizer)"),
+      enableAutoVerification: z.boolean().optional().describe("Auto-verify researcher outputs (default: true)"),
+      escalationThreshold: z.number().optional().describe("Confidence threshold for escalation (default: 80)"),
+      creditBudget: z.number().optional().describe("Max credits to spend (default: 50)"),
+      enterpriseId: z.string().optional().describe("Enterprise ID for audit trail"),
+    }),
+    execute: async ({ query, roles, enableAutoVerification, escalationThreshold, creditBudget, enterpriseId }) => {
+      const swarm = createVerifiedSwarm({
+        roles: roles as any,
+        enableAutoVerification,
+        escalationThreshold,
+        creditBudget,
+        enterpriseId,
+        apiFn: api as any,
+      });
+      const result = await swarm.run(query);
+      return result as unknown as Record<string, unknown>;
+    },
+    display: (result) => {
+      const r = result as unknown as {
+        synthesis?: { summary?: string };
+        totalCreditsUsed: number;
+        totalDurationMs: number;
+        escalated: boolean;
+        escalationNotices: string[];
+        verificationSummary: { stepsVerified: number; stepsTotal: number; avgConfidence: number; flaggedSteps: number };
+        steps: Array<{ agent: { name: string }; output: { summary?: string }; escalated: boolean }>;
+      };
+
+      const parts: string[] = [];
+
+      // Header
+      const vSum = r.verificationSummary;
+      parts.push(`Verified Swarm — ${vSum.stepsVerified}/${vSum.stepsTotal} steps verified, avg confidence ${vSum.avgConfidence}/100`);
+      if (vSum.flaggedSteps > 0) parts.push(`⚠️ ${vSum.flaggedSteps} step(s) flagged`);
+      if (r.escalated) parts.push(`🛑 Escalated: ${r.escalationNotices.join("; ")}`);
+      parts.push("");
+
+      // Step summaries
+      for (const step of r.steps || []) {
+        const esc = step.escalated ? " ⚠️" : "";
+        parts.push(`[${step.agent.name}${esc}] ${step.output.summary || "(no summary)"}`);
+      }
+
+      // Synthesis
+      if (r.synthesis?.summary) {
+        parts.push("");
+        parts.push("─── Synthesis ───");
+        parts.push(r.synthesis.summary);
+      }
+
+      parts.push("");
+      parts.push(`Credits: ${r.totalCreditsUsed} | Duration: ${Math.round(r.totalDurationMs / 1000)}s`);
+
+      return parts.join("\n");
+    },
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    category: "swarm",
+    credits: 15,
   });
 }

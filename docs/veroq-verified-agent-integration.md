@@ -14,21 +14,26 @@ VeroQ provides the verified truth layer for AI agents. This guide covers the thr
 ┌──────────────────────────────────────────────────┐
 │                  AI Agent / Client                │
 ├──────────────────────────────────────────────────┤
+│              Verified Swarm                       │
+│  createVerifiedSwarm() → multi-agent pipeline     │
+│  planner → researcher → verifier → critic → synth │
+│  Auto-verification, memory, credit budget         │
+├──────────────────────────────────────────────────┤
 │              Permission Engine                    │
 │  checkPermissions() → allow / deny / review       │
 │  checkOutputSafety() → flag high-stakes outputs   │
-│  Audit log + enterprise config                    │
+│  Audit log + enterprise config + escalation       │
 ├──────────────────────────────────────────────────┤
-│              Tool Factory                         │
-│  createVeroQTool() → register with permissions,   │
-│  size limits, error handling, Zod validation       │
+│              Tool Factory + Enhancer              │
+│  createVeroQTool() → permissions, validation      │
+│  createEnhancedVeroQTool() → verification metadata│
 ├──────────────────────────────────────────────────┤
-│              Server Enhancer                      │
-│  createEnhancedVeroQTool() → auto-inject          │
-│  confidenceScore, evidenceChain, verificationStatus│
+│              Observability                        │
+│  recordToolCall() → latency, errors, escalations  │
+│  getMetricsSummary() → rates, breakdown           │
 ├──────────────────────────────────────────────────┤
-│              52 MCP Tools                         │
-│  veroq_ask, veroq_verify, veroq_search, ...       │
+│              58 MCP Tools                         │
+│  veroq_ask, veroq_verify, veroq_run_verified_swarm│
 ├──────────────────────────────────────────────────┤
 │              VeroQ API                            │
 │  api.veroq.ai — 300+ endpoints                   │
@@ -175,6 +180,9 @@ All endpoints accept `?period=24h|7d|30d` parameter.
 | `src/observability/metrics.ts` | Lightweight metrics collector for tool calls |
 | `src/observability/index.ts` | Observability module barrel export |
 | `test/observability.test.ts` | 8 tests — metrics recording, summary, rates |
+| `src/swarm/veroq-verified-swarm.ts` | Verified Swarm — multi-agent workflows with auto-verification |
+| `src/swarm/index.ts` | Swarm module barrel export |
+| `test/verified-swarm.test.ts` | 18 tests — creation, execution, verification, escalation, memory, budget |
 | `server.ts` | Main MCP server with 52 tools (unchanged) |
 
 ### TradingAgents-Pro repo (demo)
@@ -254,6 +262,103 @@ checkPermissions("veroq_screener_natural", { query: "oversold tech" });
 >
 > [veroq.ai](https://veroq.ai) · [API Reference](https://veroq.ai/api-reference) · [Pricing](https://veroq.ai/pricing)
 
+### 5. Verified Swarm (`src/swarm/veroq-verified-swarm.ts`)
+
+Multi-agent financial workflow primitive with automatic verification, safety, and decision lineage at every step.
+
+**Pipeline:** planner → researcher → verifier → critic → synthesizer
+
+Each step automatically gets:
+- Permission checks (via permission engine)
+- Verification metadata injection
+- Escalation detection for high-stakes outputs
+- Decision lineage capture
+- Metrics recording via observability module
+- Shared memory with pruning
+
+**Cost control:** Set `creditBudget` to cap total spending. Swarm stops early if budget exhausted.
+
+#### MCP Tool
+
+Exposed as `veroq_run_verified_swarm` — available to any MCP client:
+
+```
+Tool: veroq_run_verified_swarm
+Input: { "query": "Analyze NVDA for a long position", "escalationThreshold": 75 }
+Cost: ~15-25 credits
+```
+
+#### SDK Usage (TypeScript)
+
+```typescript
+import { VeroqClient } from "veroq";
+
+const client = new VeroqClient({ apiKey: "vq_live_..." });
+
+const result = await client.createVerifiedSwarm("Analyze NVDA for a long position", {
+  roles: ["planner", "researcher", "verifier", "critic", "synthesizer"],
+  escalationThreshold: 75,
+  creditBudget: 30,
+});
+
+console.log(result.synthesis.summary);
+console.log(result.verificationSummary);
+// { stepsVerified: 3, stepsTotal: 5, avgConfidence: 78, flaggedSteps: 0 }
+```
+
+#### SDK Usage (Python)
+
+```python
+from veroq import VeroqClient
+
+client = VeroqClient(api_key="vq_live_...")
+
+result = client.create_verified_swarm(
+    "Analyze NVDA for a long position",
+    roles=["planner", "researcher", "verifier", "critic", "synthesizer"],
+    escalation_threshold=75,
+    credit_budget=30,
+)
+
+print(result["synthesis"]["summary"])
+print(result["verification_summary"])
+```
+
+#### Direct MCP Usage (Protected Core)
+
+```typescript
+import { createVerifiedSwarm } from "veroq-mcp";
+
+const swarm = createVerifiedSwarm({
+  sessionId: "analysis-001",
+  enterpriseId: "acme-capital",
+  roles: ["planner", "researcher", "verifier", "critic", "risk_assessor", "synthesizer"],
+  enableAutoVerification: true,
+  escalationThreshold: 75,
+  creditBudget: 30,
+  apiFn: myApiFunction,
+});
+
+const result = await swarm.run("Is now a good time to invest in semiconductors?");
+
+// Result includes:
+// - steps[]: per-agent output, verification, lineage, escalation status
+// - synthesis: final aggregated output
+// - verificationSummary: { stepsVerified, avgConfidence, flaggedSteps }
+// - escalated: boolean + escalationNotices[]
+// - totalCreditsUsed, totalDurationMs
+```
+
+#### When to use Verified Swarm vs single tools
+
+| Scenario | Use |
+|----------|-----|
+| Quick price check | `veroq_analyze_ticker` |
+| Fact-check a single claim | `veroq_verify_market_claim` |
+| Multi-perspective analysis with verification | **Verified Swarm** |
+| Enterprise audit trail for a complex decision | **Verified Swarm** with `enterpriseId` |
+| Automated trading pipeline with safety gates | **Verified Swarm** with `escalationThreshold: 70` |
+
 ## Team Rollout Checklist
 
 - [ ] Update SDK docs (Python, TypeScript) with verification metadata examples
@@ -275,8 +380,11 @@ checkPermissions("veroq_screener_natural", { query: "oversold tech" });
 |-------|-------|--------|
 | Tool Factory | 8 | ✓ |
 | Server Enhancer | 8 | ✓ |
-| Permission Engine | 28 | ✓ |
+| Permission Engine | 42 | ✓ |
 | Observability | 8 | ✓ |
+| Integration | 10 | ✓ |
+| High-Level Tools | 8 | ✓ |
+| Verified Swarm | 18 | ✓ |
 | Agent Coordinator | 22 | ✓ |
 | Fact Checker | 16 | ✓ |
-| **Total** | **90** | **All passing** |
+| **Total** | **103 (MCP) + 38 (demo)** | **All passing** |

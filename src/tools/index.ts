@@ -46,3 +46,17 @@ export {
   type RuleEvaluation,
   type EnterpriseConfig,
 } from "../safety/index.js";
+
+export {
+  createVerifiedSwarm,
+  VerifiedSwarm,
+  SwarmMemory,
+  type SwarmConfig,
+  type SwarmRole,
+  type SwarmAgent,
+  type SwarmStepInput,
+  type SwarmStepOutput,
+  type SwarmStepResult,
+  type SwarmResult,
+  type SwarmMemoryEntry,
+} from "../swarm/index.js";
