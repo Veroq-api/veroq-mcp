@@ -1,8 +1,8 @@
 # veroq-mcp
 
-The verified intelligence layer for AI agents. 62 MCP tools. Finance as flagship. Legal, research, compliance, and custom verticals built in.
+**Verified AI. One function call.** Stop shipping hallucinations.
 
-Every claim is fact-checked. Every output includes confidence scores and evidence chains. Every decision is logged with full lineage. Enterprise customers get safety rules, escalation triggers, and audit trails.
+62 MCP tools. `shield()` any LLM output. Evidence chains on every claim. Finance as flagship vertical, with legal, research, compliance, and custom domains built in.
 
 [veroq.ai](https://veroq.ai) | [API Reference](https://veroq.ai/docs) | [Pricing](https://veroq.ai/pricing)
 
