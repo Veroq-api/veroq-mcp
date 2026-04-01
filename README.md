@@ -153,6 +153,36 @@ console.log(result.budget);           // { spent: 12, remaining: 38 }
 console.log(result.verificationSummary); // { avgConfidence: 82, flaggedSteps: 0 }
 ```
 
+### Verify Any LLM Output
+
+```typescript
+// Extract and verify every claim in arbitrary LLM text
+const verified = await client.verifyOutput("NVIDIA's Q4 revenue exceeded $22B and margins expanded to 75%");
+console.log(verified.claims);           // each claim with verdict, confidence, correction
+console.log(verified.overall_confidence);
+```
+
+### Agent Memory
+
+```typescript
+// Store context tied to an agent
+await client.memoryStore({ agent_id: "my-bot", key: "nvda-thesis", value: "bullish on AI capex" });
+
+// Recall relevant context for a query
+const context = await client.memoryRecall({ agent_id: "my-bot", query: "NVDA outlook" });
+
+// List all stored memories
+const memories = await client.memoryList({ agent_id: "my-bot" });
+```
+
+### Real-Time Verification Stream
+
+```typescript
+// Persistent SSE — pushes ticker_status, signal_change, confidence_change, claim_update
+const stream = client.watch({ tickers: ["NVDA", "AAPL"], agent_id: "my-bot" });
+stream.on("signal_change", (event) => console.log(event));
+```
+
 ## Enterprise
 
 Enterprise customers get:
