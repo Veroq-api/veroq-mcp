@@ -111,3 +111,22 @@ export {
   type ExternalServerInfo,
   type TrustLevel,
 } from "../external/index.js";
+
+export {
+  registerHook,
+  clearHooks,
+  getHookCounts,
+  runPreExecuteHooks,
+  runPostExecuteHooks,
+  runVerificationHooks,
+  runEscalationHooks,
+  runErrorHooks,
+  type HookContext,
+  type HookResult,
+  type HookRegistry,
+  type PreExecuteHook,
+  type PostExecuteHook,
+  type OnVerificationHook,
+  type OnEscalationHook,
+  type OnErrorHook,
+} from "../hooks/index.js";
