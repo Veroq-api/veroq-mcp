@@ -12,7 +12,7 @@
 npm install -g veroq-mcp
 ```
 
-Get your API key at [veroq.ai/settings](https://veroq.ai/settings).
+Get your API key at [veroq.ai/settings](https://veroq.ai/developers).
 
 ## Quick Start
 
