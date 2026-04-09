@@ -1796,7 +1796,7 @@ server.tool(
 
 WHEN TO USE: To gauge retail investor sentiment and social buzz around a specific ticker.
 RETURNS: Overall sentiment score, mention count, per-platform breakdown, trending topics, and top posts with URLs.
-COST: 2 credits.
+COST: 30 credits.
 EXAMPLE: { "symbol": "TSLA" }`,
   {
     symbol: z.string().describe("Ticker symbol (e.g. AAPL, TSLA, BTC)"),
@@ -1849,7 +1849,7 @@ server.tool(
 
 WHEN TO USE: To discover what retail investors are buzzing about right now. No parameters needed.
 RETURNS: Trending symbols with name, mention count, sentiment score, and 1-hour change in mentions.
-COST: 2 credits.
+COST: 20 credits.
 EXAMPLE: {}`,
   {},
   async () => {
@@ -2592,6 +2592,456 @@ EXAMPLE: { "slug": "due-diligence", "inputs": { "ticker": "AAPL" } }`,
     }
     if (data.credits_used != null) parts.push(`\n_Credits used: ${data.credits_used}_`);
     return text(parts.join("\n"));
+  }
+);
+
+// ── Fast Tier ──
+
+// 53. veroq_fast_signals
+server.tool(
+  "veroq_fast_signals",
+  `Pre-computed buy/sell signals across 78 tickers — refreshed every cycle.
+
+WHEN TO USE: For a quick overview of all active signals without running individual ticker analyses. Good for scanning opportunities.
+RETURNS: Array of tickers with signal direction (buy/sell/hold), score, and contributing factors.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/fast/signals");
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// 54. veroq_fast_macro
+server.tool(
+  "veroq_fast_macro",
+  `Macro dashboard: yields, CFTC positioning, jobs, energy — all pre-computed.
+
+WHEN TO USE: For a single-call macro snapshot combining treasury yields, CFTC Commitment of Traders, employment data, and energy prices.
+RETURNS: Structured macro data across multiple categories.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/fast/macro");
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// 55. veroq_fast_snapshot
+server.tool(
+  "veroq_fast_snapshot",
+  `Pre-computed signal for one ticker — fast lookup without running full analysis.
+
+WHEN TO USE: When you need the signal for a specific ticker quickly. Faster than veroq_ticker_score because it reads pre-computed data.
+RETURNS: Ticker signal with score, direction, and factors.
+COST: 1 credit.
+EXAMPLE: { "ticker": "NVDA" }`,
+  {
+    ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
+  },
+  async ({ ticker }) => {
+    const data = await api("GET", `/api/v1/fast/snapshot/${encodeURIComponent(ticker.toUpperCase())}`);
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// 56. veroq_fast_movers
+server.tool(
+  "veroq_fast_movers",
+  `Biggest signal changes in the last cycle — tickers where the signal moved most.
+
+WHEN TO USE: To identify which tickers had the biggest change in buy/sell signals recently. Good for momentum or reversal detection.
+RETURNS: Array of tickers with previous and current signal scores and the delta.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/fast/movers");
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// 57. veroq_fast_heatmap
+server.tool(
+  "veroq_fast_heatmap",
+  `All 78 tickers with signal scores — heatmap-style overview.
+
+WHEN TO USE: For a complete view of all tracked tickers and their current signal scores. Good for building visual dashboards or scanning all at once.
+RETURNS: Array of all tickers with signal scores.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/fast/heatmap");
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// ── Travel Intelligence ──
+
+// 58. veroq_travel_overview
+server.tool(
+  "veroq_travel_overview",
+  `Travel disruption score combining TSA volumes, FAA delays, and border wait times.
+
+WHEN TO USE: For a quick snapshot of US travel conditions — airport delays, passenger throughput, and border crossing waits.
+RETURNS: Composite disruption score, TSA passenger counts, FAA ground stops, and border wait times.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/travel/overview");
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// 59. veroq_travel_tsa
+server.tool(
+  "veroq_travel_tsa",
+  `TSA daily passenger volumes — throughput data from US airport checkpoints.
+
+WHEN TO USE: To track airport passenger volumes and compare to historical levels. Useful for travel industry analysis and consumer spending indicators.
+RETURNS: Daily passenger counts, year-over-year comparison, and trend data.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/travel/tsa");
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// 60. veroq_travel_faa
+server.tool(
+  "veroq_travel_faa",
+  `FAA ground stops and airport delays — live data from the FAA.
+
+WHEN TO USE: To check for current airport delays, ground stops, or airspace disruptions in the US.
+RETURNS: Active ground stops, ground delay programs, airport closures, and general delay information.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/travel/faa");
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// ── SEC EDGAR ──
+
+// 61. veroq_edgar_filings
+server.tool(
+  "veroq_edgar_filings",
+  `Recent SEC filings (10-K, 10-Q, 8-K) for a company from EDGAR.
+
+WHEN TO USE: To see a company's recent regulatory filings — annual reports, quarterly reports, and current event disclosures.
+RETURNS: List of filings with type, date, description, and EDGAR URL.
+COST: 1 credit.
+EXAMPLE: { "ticker": "AAPL" }`,
+  {
+    ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
+  },
+  async ({ ticker }) => {
+    const data = await api("GET", `/api/v1/edgar/filings/${encodeURIComponent(ticker.toUpperCase())}`);
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// 62. veroq_edgar_insider
+server.tool(
+  "veroq_edgar_insider",
+  `Form 4 insider trades for a company from SEC EDGAR.
+
+WHEN TO USE: To see insider buying and selling activity — who traded, how many shares, and at what price. Complements veroq_insider which uses a different data source.
+RETURNS: List of insider transactions with name, title, date, shares, price, and transaction type.
+COST: 1 credit.
+EXAMPLE: { "ticker": "TSLA" }`,
+  {
+    ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
+  },
+  async ({ ticker }) => {
+    const data = await api("GET", `/api/v1/edgar/insider/${encodeURIComponent(ticker.toUpperCase())}`);
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// 63. veroq_edgar_financials
+server.tool(
+  "veroq_edgar_financials",
+  `XBRL financial data for a company from SEC EDGAR.
+
+WHEN TO USE: To get structured financial statements (income statement, balance sheet, cash flow) directly from SEC filings.
+RETURNS: Financial data extracted from XBRL filings including revenue, net income, assets, liabilities, and cash flows.
+COST: 1 credit.
+EXAMPLE: { "ticker": "MSFT" }`,
+  {
+    ticker: z.string().describe("Ticker symbol (e.g. AAPL, NVDA, TSLA)"),
+  },
+  async ({ ticker }) => {
+    const data = await api("GET", `/api/v1/edgar/financials/${encodeURIComponent(ticker.toUpperCase())}`);
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// ── Energy ──
+
+// 64. veroq_energy_overview
+server.tool(
+  "veroq_energy_overview",
+  `Oil prices, petroleum inventory, and natural gas data.
+
+WHEN TO USE: For a snapshot of the energy market — crude oil (WTI/Brent) prices, EIA petroleum inventories, and natural gas spot prices.
+RETURNS: Current prices, inventory levels, and recent changes.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/energy/overview");
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// ── Alternative Data ──
+
+// 65. veroq_alt_yields
+server.tool(
+  "veroq_alt_yields",
+  `Treasury yield curve with inversion detection.
+
+WHEN TO USE: To check the current US Treasury yield curve across maturities (1M, 3M, 6M, 1Y, 2Y, 5Y, 10Y, 30Y) and detect inversions that may signal recession.
+RETURNS: Yield values per maturity, spread calculations, and inversion flags.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/alt/yields");
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// 66. veroq_alt_cot
+server.tool(
+  "veroq_alt_cot",
+  `CFTC Commitment of Traders positioning for a commodity.
+
+WHEN TO USE: To see how commercial hedgers, large speculators, and small traders are positioned in futures markets. A contrarian indicator — extreme positioning often precedes reversals.
+RETURNS: Net positions by trader category, open interest, and changes from prior week.
+COST: 1 credit.
+EXAMPLE: { "commodity": "gold" }`,
+  {
+    commodity: z.string().describe("Commodity name (e.g. gold, silver, crude-oil, natural-gas, corn, soybeans, wheat, copper, sp500)"),
+  },
+  async ({ commodity }) => {
+    const data = await api("GET", `/api/v1/alt/cot/${encodeURIComponent(commodity.toLowerCase())}`);
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// 67. veroq_alt_attention
+server.tool(
+  "veroq_alt_attention",
+  `Wikipedia attention score for an entity — pageview-based interest signal.
+
+WHEN TO USE: To gauge public interest in a company, person, or topic based on Wikipedia traffic. Spikes in attention often precede or accompany market moves.
+RETURNS: Pageview counts, trend direction, and percentile ranking.
+COST: 1 credit.
+EXAMPLE: { "entity": "NVIDIA" }`,
+  {
+    entity: z.string().describe("Entity name — company, person, or topic (e.g. NVIDIA, Elon Musk, Bitcoin)"),
+  },
+  async ({ entity }) => {
+    const data = await api("GET", `/api/v1/alt/attention/${encodeURIComponent(entity)}`);
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// ── Research ──
+
+// 68. veroq_research_papers
+server.tool(
+  "veroq_research_papers",
+  `Latest arXiv AI/ML research papers.
+
+WHEN TO USE: To discover recent academic research in artificial intelligence and machine learning. Good for tracking cutting-edge developments.
+RETURNS: List of papers with title, authors, abstract, categories, and arXiv URL.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/research/papers");
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// 69. veroq_research_github
+server.tool(
+  "veroq_research_github",
+  `Trending GitHub repos with AI detection — what developers are building now.
+
+WHEN TO USE: To see which GitHub repositories are trending, with automatic detection of AI/ML-related projects. Good for tech trend analysis.
+RETURNS: List of trending repos with stars, forks, language, description, and AI classification.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/research/github-trending");
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// 70. veroq_research_fda
+server.tool(
+  "veroq_research_fda",
+  `FDA drug approvals and recalls — recent regulatory actions.
+
+WHEN TO USE: To track FDA drug approvals, rejections, and recalls. Important for biotech/pharma stock analysis.
+RETURNS: List of recent FDA actions with drug name, company, action type, date, and details.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/research/fda");
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// 71. veroq_research_bills
+server.tool(
+  "veroq_research_bills",
+  `Recent Congressional bills — legislation that may affect markets.
+
+WHEN TO USE: To track new legislation in the US Congress that could impact industries or markets. Good for policy risk analysis.
+RETURNS: List of bills with title, sponsor, status, introduced date, and summary.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/research/bills");
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// 72. veroq_research_regulations
+server.tool(
+  "veroq_research_regulations",
+  `New Federal Register regulations — proposed and final rules.
+
+WHEN TO USE: To track new federal regulations that could affect specific industries. Good for compliance and regulatory risk analysis.
+RETURNS: List of regulations with title, agency, type (proposed/final), publication date, and summary.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/research/regulations");
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// ── World Data ──
+
+// 73. veroq_world_hackernews
+server.tool(
+  "veroq_world_hackernews",
+  `Hacker News top stories — what the tech community is discussing.
+
+WHEN TO USE: To see what's trending on Hacker News. Good for tracking tech industry sentiment and emerging topics.
+RETURNS: List of top stories with title, score, comment count, author, and URL.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/world/hackernews");
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// 74. veroq_world_jobs
+server.tool(
+  "veroq_world_jobs",
+  `BLS employment data — nonfarm payrolls, unemployment rate, and labor market indicators.
+
+WHEN TO USE: For US employment data from the Bureau of Labor Statistics. Key economic indicator for market analysis and Fed policy expectations.
+RETURNS: Latest employment figures, historical comparison, and labor market metrics.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/world/jobs");
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// 75. veroq_world_gdp
+server.tool(
+  "veroq_world_gdp",
+  `US GDP data from the World Bank — gross domestic product and growth rates.
+
+WHEN TO USE: For GDP data and economic growth analysis. Useful for macro context and long-term trend analysis.
+RETURNS: GDP values, growth rates, and historical comparison.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/world/gdp");
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// ── Context & Intelligence ──
+
+// 76. veroq_context
+server.tool(
+  "veroq_context",
+  `Full background research on a topic — aggregates briefs, entities, timeline, and related data.
+
+WHEN TO USE: When you need comprehensive background on a topic before answering a complex question. Broader than veroq_ask — returns raw context rather than a synthesized answer.
+RETURNS: Aggregated briefs, entity profiles, timeline of events, and related topics.
+COST: 3 credits.
+EXAMPLE: { "topic": "semiconductor export controls" }`,
+  {
+    topic: z.string().describe("Topic to research (e.g. 'semiconductor export controls', 'NVIDIA earnings', 'Fed rate decision')"),
+  },
+  async ({ topic }) => {
+    const data = await api("GET", "/api/v1/context", { topic });
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// 77. veroq_intelligence
+server.tool(
+  "veroq_intelligence",
+  `Cross-category impact analysis — how a topic affects multiple sectors and asset classes.
+
+WHEN TO USE: For understanding second-order effects of events. E.g., how a Fed rate decision impacts tech stocks, bonds, crypto, and real estate simultaneously.
+RETURNS: Impact scores across categories, affected tickers, transmission channels, and risk assessment.
+COST: 5 credits.
+EXAMPLE: { "topic": "Fed rate cut" }`,
+  {
+    topic: z.string().describe("Topic or event to analyze for cross-category impact (e.g. 'Fed rate cut', 'China tariffs', 'oil supply disruption')"),
+  },
+  async ({ topic }) => {
+    const data = await api("GET", "/api/v1/intelligence", { topic });
+    return text(JSON.stringify(data, null, 2));
+  }
+);
+
+// ── Agent ──
+
+// 78. veroq_agent_packs
+server.tool(
+  "veroq_agent_packs",
+  `List available vertical agent packs — pre-built agent configurations for specific domains.
+
+WHEN TO USE: To discover which agent packs are available before calling veroq_run_agent. Each pack is a curated workflow for a specific use case.
+RETURNS: List of agent packs with slug, name, description, required inputs, and credit cost.
+COST: 1 credit.
+EXAMPLE: {}`,
+  {},
+  async () => {
+    const data = await api("GET", "/api/v1/agents/packs");
+    return text(JSON.stringify(data, null, 2));
   }
 );
 
